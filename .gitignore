@@ -1,6 +1,7 @@
 # OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Editor/IDE
 .idea/
@@ -8,25 +9,70 @@ Thumbs.db
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
 # Secrets and credentials (never commit these)
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
 kubeconfig
 kubeconfig.yaml
+kubeconfig-*
 .env
 .env.*
+.env.local
 credentials.json
-tmp/*
+secrets.yaml
+*-secret.yaml
+*-secrets.yaml
+service-account*.json
 
 # Helm
 charts/
 *.tgz
+Chart.lock
 
 # Temporary files
+tmp/
+temp/
 *.tmp
 *.bak
 *.log
+*.orig
 
 # Generated manifests with secrets
 *-generated.yaml
+*-rendered.yaml
+
+# Terraform (if used for infra)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
+
+# Python (for local scripts)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.python-version
+
+# Node (for local tooling)
+node_modules/
+
+# Kustomize build output
+kustomize-build/
+
+# kubectl dry-run output
+dry-run-output/
+
+# Redis dump
+dump.rdb
+
+# Test outputs
+coverage/
+test-results/
