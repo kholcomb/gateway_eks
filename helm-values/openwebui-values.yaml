@@ -1,0 +1,94 @@
+# OpenWebUI Helm Chart Values
+# Helm repo: https://helm.openwebui.com/
+
+# Pin to official image for stability
+image:
+  repository: ghcr.io/open-webui/open-webui
+  tag: "v0.6.41"
+  pullPolicy: IfNotPresent
+
+# Connect to LiteLLM as OpenAI-compatible backend
+openaiBaseApiUrl: "http://litellm.litellm.svc.cluster.local:4000/v1"
+
+# API key from ExternalSecret
+extraEnvVars:
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: openai-api-key
+
+  # Disable signup in production (optional)
+  # - name: ENABLE_SIGNUP
+  #   value: "false"
+
+  # Webui secret key for session encryption
+  - name: WEBUI_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: openai-api-key  # Reusing for simplicity, or create separate secret
+
+# Disable bundled Ollama (using LiteLLM instead)
+ollama:
+  enabled: false
+
+# Disable bundled Pipelines
+pipelines:
+  enabled: false
+
+# Persistence on EBS with gp3 storage class
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: gp3
+  accessModes:
+    - ReadWriteOnce
+
+# Internal service only (no public ingress)
+service:
+  type: ClusterIP
+  port: 80
+
+# No ingress - access via port-forward from bastion
+ingress:
+  enabled: false
+
+# Resource limits
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health/db
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+# Node selector (optional - for cost optimization)
+# nodeSelector:
+#   node.kubernetes.io/instance-type: t3.medium
+
+# Pod annotations for monitoring
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000

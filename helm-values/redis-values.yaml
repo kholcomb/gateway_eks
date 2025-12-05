@@ -1,0 +1,96 @@
+# DandyDeveloper Redis HA Helm Chart Values
+# Helm repo: https://dandydeveloper.github.io/charts
+# Chart: redis-ha (replaces Bitnami redis which is now behind paywall)
+
+# Pin image version for stability
+image:
+  repository: redis
+  tag: "7.4-alpine"
+
+# Number of redis master/slave pods
+replicas: 3
+
+# Redis configuration
+redis:
+  port: 6379
+  masterGroupName: "mymaster"
+  config:
+    maxmemory-policy: "volatile-lru"
+
+# Authentication using ExternalSecret
+auth: true
+redisPassword:
+  # Password will be provided via existingSecret
+existingSecret: redis-credentials
+authKey: redis-password
+
+# Sentinel configuration for automatic failover
+sentinel:
+  port: 26379
+  quorum: 2
+
+# Persistence on EBS with gp3 storage class
+persistentVolume:
+  enabled: true
+  size: 8Gi
+  storageClass: gp3
+  accessModes:
+    - ReadWriteOnce
+
+# Resource limits
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# High availability - spread pods across nodes
+hardAntiAffinity: true
+
+# Pod disruption budget
+podDisruptionBudget:
+  maxUnavailable: 1
+
+# Liveness and readiness probes
+redis:
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# HAProxy for load balancing (recommended for external access)
+haproxy:
+  enabled: false  # Using Sentinel-aware clients directly
+
+# Prometheus metrics (using official quay.io image)
+exporter:
+  enabled: true
+  image: quay.io/oliver006/redis_exporter
+  tag: v1.66.0
+  port: 9121
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    release: kube-prometheus
+
+# Network policy (optional - enable for enhanced security)
+networkPolicy:
+  enabled: false
+
+# Pod security context
+securityContext:
+  runAsUser: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# Common labels
+commonLabels:
+  app.kubernetes.io/part-of: litellm-stack
