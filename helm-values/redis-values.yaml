@@ -7,12 +7,32 @@ image:
   repository: redis
   tag: "7.4.1-alpine"
 
+# TLS Configuration for encrypted Redis connections
+# Prerequisites:
+#   1. Create TLS secret with cert-manager or manually:
+#      kubectl create secret tls redis-tls-certs \
+#        --cert=redis.crt --key=redis.key -n litellm
+#   2. Create CA cert configmap/secret if using custom CA
+#   3. Update LiteLLM Redis config to use TLS:
+#      - Change REDIS_PORT from 6379 to 6380
+#      - Set REDIS_SSL=true in extraEnvVars
+#      - Update redis_port in proxy_config.router_settings
+tls:
+  secretName: redis-tls-certs
+  certFile: tls.crt
+  keyFile: tls.key
+  caCertFile: ca.crt
+
 # Number of redis master/slave pods
 replicas: 3
 
 # Redis configuration
 redis:
   port: 6379
+  # TLS port for encrypted connections (clients should connect to this port)
+  tlsPort: 6380
+  # Enable TLS for replication between master and replicas
+  tlsReplication: true
   masterGroupName: "mymaster"
   config:
     maxmemory-policy: "volatile-lru"
@@ -42,6 +62,10 @@ authKey: redis-password
 # Sentinel configuration for automatic failover
 sentinel:
   port: 26379
+  # TLS port for sentinel connections
+  tlsPort: 26380
+  # Enable TLS for sentinel replication monitoring
+  tlsReplication: true
   quorum: 2
 
 # Persistence on EBS with gp3 storage class
