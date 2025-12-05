@@ -29,6 +29,7 @@ secrets.yaml
 *-secret.yaml
 *-secrets.yaml
 service-account*.json
+THREAT_MODEL.md
 
 # Helm
 charts/
