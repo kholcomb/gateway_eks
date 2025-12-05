@@ -114,10 +114,13 @@ proxy_config:
     redis_host: "redis-redis-ha.litellm.svc.cluster.local"
     redis_password: "os.environ/REDIS_PASSWORD"
     redis_port: 6379
-    routing_strategy: "simple-shuffle"
+    routing_strategy: "simple-shuffle"  # Default: RPM/TPM-based distribution
     num_retries: 3
     timeout: 120
     retry_after: 5
+    # Cooldown settings for failing deployments
+    allowed_fails: 3        # Number of failures before cooldown
+    cooldown_time: 60       # Seconds to exclude failing model from rotation
 
   # LiteLLM settings
   litellm_settings:
@@ -141,6 +144,23 @@ proxy_config:
     # OpenTelemetry configuration
     otel: true
     service_name: "litellm-proxy"
+
+    # Fallback configuration: If primary model fails, try alternatives
+    # Format: {"primary-model": ["fallback-1", "fallback-2"]}
+    fallbacks:
+      - {"claude-3.5-sonnet": ["claude-3-sonnet", "llama-3.1-70b"]}
+      - {"claude-3-sonnet": ["claude-3-haiku", "llama-3.1-70b"]}
+      - {"claude-3-opus": ["claude-3.5-sonnet", "claude-3-sonnet"]}
+      - {"llama-3.1-70b": ["llama-3.1-8b", "mistral-large"]}
+
+    # Budget management (requires PostgreSQL database)
+    # Global proxy budget limit (USD)
+    max_budget: 10000
+    budget_duration: "30d"
+
+    # Default budget for internal users (USD)
+    max_internal_user_budget: 100
+    internal_user_budget_duration: "1mo"
 
   # General proxy settings
   general_settings:
