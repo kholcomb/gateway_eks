@@ -19,16 +19,93 @@ extraEnvVars:
         name: openwebui-secrets
         key: openai-api-key
 
-  # Disable signup in production (optional)
-  # - name: ENABLE_SIGNUP
-  #   value: "false"
-
-  # Webui secret key for session encryption
+  # Webui secret key for session encryption (required for multi-node deployments)
   - name: WEBUI_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: openwebui-secrets
-        key: openai-api-key  # Reusing for simplicity, or create separate secret
+        key: webui-secret-key
+
+  # ============================================
+  # Okta OIDC Authentication Configuration
+  # ============================================
+  # Prerequisites:
+  #   1. Create Okta OIDC application with:
+  #      - Sign-in redirect URI: https://<openwebui-domain>/oauth/oidc/callback
+  #      - Sign-out redirect URI: https://<openwebui-domain>
+  #   2. Store client credentials in AWS Secrets Manager
+  #   3. Create ExternalSecret for okta-oidc-secrets
+
+  # WEBUI_URL must be set BEFORE enabling OAuth (cannot be changed after)
+  - name: WEBUI_URL
+    value: "https://openwebui.example.com"  # TODO: Update to actual domain
+
+  # Enable OAuth signup (disables local registration)
+  - name: ENABLE_OAUTH_SIGNUP
+    value: "true"
+
+  # OAuth provider display name
+  - name: OAUTH_PROVIDER_NAME
+    value: "Okta"
+
+  # Okta OIDC discovery endpoint
+  # Format: https://<your-okta-domain>/oauth2/default/.well-known/openid-configuration
+  - name: OPENID_PROVIDER_URL
+    valueFrom:
+      secretKeyRef:
+        name: okta-oidc-secrets
+        key: openid-provider-url
+
+  # Okta client credentials
+  - name: OAUTH_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: okta-oidc-secrets
+        key: client-id
+  - name: OAUTH_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: okta-oidc-secrets
+        key: client-secret
+
+  # OAuth scopes (include groups for RBAC)
+  - name: OAUTH_SCOPES
+    value: "openid email profile groups"
+
+  # Merge accounts if email matches existing user
+  - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+    value: "true"
+
+  # ============================================
+  # Group & Role Management (Optional)
+  # ============================================
+  # Sync Okta groups to OpenWebUI groups on login
+  - name: ENABLE_OAUTH_GROUP_MANAGEMENT
+    value: "true"
+
+  # Auto-create groups from Okta claims
+  - name: ENABLE_OAUTH_GROUP_CREATION
+    value: "true"
+
+  # Claim containing group memberships
+  - name: OAUTH_GROUP_CLAIM
+    value: "groups"
+
+  # Role-based access (optional - uncomment to enable)
+  # - name: ENABLE_OAUTH_ROLE_MANAGEMENT
+  #   value: "true"
+  # - name: OAUTH_ROLES_CLAIM
+  #   value: "roles"
+  # - name: OAUTH_ADMIN_ROLES
+  #   value: "openwebui-admin"
+
+  # Disable local password auth (OAuth only)
+  - name: ENABLE_PASSWORD_AUTH
+    value: "false"
+
+  # Disable local signup form
+  - name: ENABLE_SIGNUP
+    value: "false"
 
 # Disable bundled Ollama (using LiteLLM instead)
 ollama:
