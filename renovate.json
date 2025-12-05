@@ -1,0 +1,122 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate configuration for LiteLLM EKS deployment",
+  "extends": [
+    "config:recommended",
+    "schedule:weekdays",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":automergePatch"
+  ],
+  "baseBranches": ["dev"],
+  "timezone": "America/New_York",
+  "schedule": ["after 9am and before 5pm on monday"],
+  "prHourlyLimit": 5,
+  "prConcurrentLimit": 10,
+  "labels": ["dependencies"],
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "commitMessageTopic": "GitHub Actions",
+      "addLabels": ["github-actions"],
+      "semanticCommitType": "ci"
+    },
+    {
+      "description": "Group Helm chart updates",
+      "matchManagers": ["helmv3", "helm-values"],
+      "groupName": "helm-charts",
+      "commitMessageTopic": "Helm charts",
+      "addLabels": ["helm"],
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "Group Docker image updates",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "docker-images",
+      "commitMessageTopic": "Docker images",
+      "addLabels": ["docker"],
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "Group Terraform provider updates",
+      "matchManagers": ["terraform"],
+      "groupName": "terraform-providers",
+      "commitMessageTopic": "Terraform providers",
+      "addLabels": ["terraform"],
+      "semanticCommitType": "infra"
+    },
+    {
+      "description": "AWS Terraform providers",
+      "matchManagers": ["terraform"],
+      "matchPackagePatterns": ["^hashicorp/aws", "^aws/"],
+      "groupName": "terraform-aws"
+    },
+    {
+      "description": "Kubernetes Terraform providers",
+      "matchManagers": ["terraform"],
+      "matchPackagePatterns": ["^hashicorp/kubernetes", "^hashicorp/helm"],
+      "groupName": "terraform-kubernetes"
+    },
+    {
+      "description": "Be conservative with major version updates",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "14 days",
+      "automerge": false,
+      "addLabels": ["major-update"]
+    },
+    {
+      "description": "Observability stack (Prometheus, Grafana, Jaeger)",
+      "matchPackagePatterns": ["prometheus", "grafana", "jaeger"],
+      "groupName": "observability-stack",
+      "addLabels": ["observability"]
+    },
+    {
+      "description": "LiteLLM updates",
+      "matchPackagePatterns": ["litellm", "berriai"],
+      "groupName": "litellm",
+      "addLabels": ["litellm"]
+    },
+    {
+      "description": "External Secrets Operator",
+      "matchPackagePatterns": ["external-secrets"],
+      "groupName": "external-secrets",
+      "addLabels": ["secrets"]
+    },
+    {
+      "description": "Redis updates",
+      "matchPackagePatterns": ["redis"],
+      "groupName": "redis",
+      "addLabels": ["redis"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Helm OCI chart versions in deploy.sh",
+      "fileMatch": ["scripts/deploy\\.sh$"],
+      "matchStrings": [
+        "helm pull (?<depName>oci://[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Image versions in Helm values files",
+      "fileMatch": ["helm-values/.*\\.yaml$"],
+      "matchStrings": [
+        "image:\\s*['\"]?(?<depName>[^:@\\s'\"]+):(?<currentValue>[^\\s'\"]+)['\"]?"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "helm-values": {
+    "fileMatch": ["helm-values/.*\\.yaml$"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": false
+  }
+}
