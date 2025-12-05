@@ -76,3 +76,6 @@ dump.rdb
 # Test outputs
 coverage/
 test-results/
+
+# Feature branch TODO files
+TODO.md
