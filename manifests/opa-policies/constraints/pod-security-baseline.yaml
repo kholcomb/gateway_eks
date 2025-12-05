@@ -1,0 +1,40 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPodSecurity
+metadata:
+  name: pod-security-baseline
+  annotations:
+    description: >-
+      Enforces baseline Pod Security Standards.
+      Blocks privileged containers, host namespaces, and dangerous configurations.
+spec:
+  # Start in dryrun mode to audit without blocking
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet", "ReplicaSet"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+  parameters:
+    # Baseline security settings
+    allowPrivileged: false
+    allowPrivilegeEscalation: false
+    allowHostNetwork: false
+    allowHostPID: false
+    allowHostIPC: false
+    requireNonRoot: true
+    # Read-only root filesystem is ideal but may break some apps
+    requireReadOnlyRootFilesystem: false
+    # Only allow safe capabilities
+    allowedCapabilities:
+      - "NET_BIND_SERVICE"  # For binding to ports < 1024
+    # Require dropping ALL capabilities (apps can add back allowed ones)
+    requiredDropCapabilities:
+      - "ALL"
+    exemptImages:
+      # AWS system images that may require elevated privileges
+      - "602401143452.dkr.ecr.*.amazonaws.com/*"

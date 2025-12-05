@@ -1,0 +1,29 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sContainerLimits
+metadata:
+  name: require-container-limits
+  annotations:
+    description: >-
+      Requires all containers to have CPU and memory limits defined.
+      Prevents resource exhaustion and ensures fair scheduling.
+spec:
+  # Start in dryrun mode to audit without blocking
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet", "ReplicaSet"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+  parameters:
+    requireCpuLimits: true
+    requireMemoryLimits: true
+    requireCpuRequests: true
+    requireMemoryRequests: true
+    exemptImages:
+      # AWS system images
+      - "602401143452.dkr.ecr.*.amazonaws.com/*"
