@@ -95,6 +95,15 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Helm OCI chart versions in deploy.sh",
+      "fileMatch": ["scripts/deploy\\.sh$"],
+      "matchStrings": [
+        "helm pull (?<depName>oci://[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "Image versions in Helm values files",
       "fileMatch": ["helm-values/.*\\.yaml$"],
       "matchStrings": [
