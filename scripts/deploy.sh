@@ -165,7 +165,7 @@ create_aws_secrets() {
             --secret-string "$MASTER_KEY" \
             --region "$AWS_REGION"
         log "Created litellm/master-key secret"
-        log "Master key: $MASTER_KEY (save this!)"
+        log "IMPORTANT: Retrieve your master key with: aws secretsmanager get-secret-value --secret-id litellm/master-key --region $AWS_REGION --query SecretString --output text"
     else
         log "litellm/master-key already exists"
     fi
@@ -237,12 +237,12 @@ create_namespaces() {
 deploy_external_secrets() {
     log "Deploying External Secrets Operator..."
 
-    # Update values with correct account ID
-    sed -i.bak "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" "$BASE_DIR/helm-values/external-secrets-values.yaml"
+    # Create temp values file with correct account ID (don't modify original)
+    sed "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" "$BASE_DIR/helm-values/external-secrets-values.yaml" > /tmp/external-secrets-values.yaml
 
     helm upgrade --install external-secrets external-secrets/external-secrets \
         -n external-secrets \
-        -f "$BASE_DIR/helm-values/external-secrets-values.yaml" \
+        -f /tmp/external-secrets-values.yaml \
         --wait --timeout 5m
 
     # Wait for webhook to be ready
@@ -257,14 +257,24 @@ deploy_external_secrets() {
 create_secret_stores() {
     log "Creating ClusterSecretStore and ExternalSecrets..."
 
-    # Update region in ClusterSecretStore
-    sed -i.bak "s/us-east-1/$AWS_REGION/g" "$BASE_DIR/manifests/cluster-secret-store.yaml"
+    # Create temp manifest with correct region (don't modify original)
+    sed "s/us-east-1/$AWS_REGION/g" "$BASE_DIR/manifests/cluster-secret-store.yaml" > /tmp/cluster-secret-store.yaml
 
     # Apply ClusterSecretStore
-    kubectl apply -f "$BASE_DIR/manifests/cluster-secret-store.yaml"
+    kubectl apply -f /tmp/cluster-secret-store.yaml
 
-    # Wait a moment for the store to be ready
-    sleep 10
+    # Wait for ClusterSecretStore to be ready
+    log "Waiting for ClusterSecretStore to be ready..."
+    for i in {1..30}; do
+        if kubectl get clustersecretstore aws-secrets-manager -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; then
+            log "ClusterSecretStore is ready"
+            break
+        fi
+        if [[ $i -eq 30 ]]; then
+            log "WARNING: ClusterSecretStore not ready after 30 attempts"
+        fi
+        sleep 2
+    done
 
     # Apply ExternalSecrets
     kubectl apply -f "$BASE_DIR/manifests/litellm-external-secret.yaml"
@@ -272,14 +282,19 @@ create_secret_stores() {
 
     log "ClusterSecretStore and ExternalSecrets created"
     log "Waiting for secrets to sync..."
-    sleep 15
 
-    # Verify secrets were created
-    if kubectl get secret litellm-secrets -n litellm &> /dev/null; then
-        log "litellm-secrets synced successfully"
-    else
-        log "WARNING: litellm-secrets not yet synced. Check ExternalSecret status."
-    fi
+    # Wait for ExternalSecrets to sync
+    for i in {1..30}; do
+        LITELLM_STATUS=$(kubectl get externalsecret litellm-secrets -n litellm -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+        if [[ "$LITELLM_STATUS" == "True" ]]; then
+            log "litellm-secrets synced successfully"
+            break
+        fi
+        if [[ $i -eq 30 ]]; then
+            log "WARNING: litellm-secrets not yet synced. Check ExternalSecret status."
+        fi
+        sleep 2
+    done
 }
 
 # ============================================================================
@@ -316,16 +331,19 @@ deploy_redis() {
 deploy_litellm() {
     log "Deploying LiteLLM..."
 
-    # Update values with correct account ID
-    sed -i.bak "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" "$BASE_DIR/helm-values/litellm-values.yaml"
+    # Create temp values file with correct account ID (don't modify original)
+    sed "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" "$BASE_DIR/helm-values/litellm-values.yaml" > /tmp/litellm-values.yaml
 
     # Pull and install the OCI chart
     helm pull oci://ghcr.io/berriai/litellm-helm --untar -d /tmp/
 
     helm upgrade --install litellm /tmp/litellm-helm \
         -n litellm \
-        -f "$BASE_DIR/helm-values/litellm-values.yaml" \
+        -f /tmp/litellm-values.yaml \
         --wait --timeout 5m
+
+    # Clean up temp chart directory
+    rm -rf /tmp/litellm-helm
 
     log "LiteLLM deployed"
 }

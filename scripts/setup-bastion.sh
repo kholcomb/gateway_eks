@@ -67,14 +67,7 @@ get_eks_network_info() {
             --description "Security group for LLM bastion host" \
             --vpc-id "$EKS_VPC_ID" \
             --query "GroupId" --output text --region "$AWS_REGION")
-
-        # Allow outbound traffic
-        aws ec2 authorize-security-group-egress \
-            --group-id "$EKS_NODE_SG" \
-            --protocol all \
-            --port -1 \
-            --cidr 0.0.0.0/0 \
-            --region "$AWS_REGION" 2>/dev/null || true
+        # Note: Default SG allows all outbound traffic, no egress rule needed
     fi
 
     log "Security Group ID: $EKS_NODE_SG"
@@ -189,13 +182,18 @@ create_user_data() {
 #!/bin/bash
 set -e
 
-# Install kubectl
-curl -LO "https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+# Install kubectl with checksum verification
+KUBECTL_VERSION=\$(curl -L -s https://dl.k8s.io/release/stable.txt)
+curl -LO "https://dl.k8s.io/release/\${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/\${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+echo "\$(cat kubectl.sha256)  kubectl" | sha256sum --check
 chmod +x kubectl
 mv kubectl /usr/local/bin/
+rm kubectl.sha256
 
-# Install helm
+# Install helm with checksum verification
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+# Helm's install script verifies checksums internally
 chmod 700 get_helm.sh
 ./get_helm.sh
 rm get_helm.sh
@@ -243,7 +241,7 @@ launch_instance() {
     else
         # Create user data
         create_user_data
-        USER_DATA=$(base64 -i /tmp/bastion-user-data.sh)
+        USER_DATA=$(base64 < /tmp/bastion-user-data.sh | tr -d '\n')
 
         INSTANCE_ID=$(aws ec2 run-instances \
             --image-id "$AMI_ID" \
