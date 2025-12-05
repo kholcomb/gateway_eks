@@ -17,7 +17,7 @@ serviceAccount:
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/litellm-bedrock-role"
 
 # Environment variables from secrets and configmaps
-env:
+extraEnvVars:
   # Database connection (from ExternalSecret)
   - name: DATABASE_URL
     valueFrom:
@@ -54,9 +54,9 @@ env:
   - name: AWS_DEFAULT_REGION
     value: "us-east-1"  # TODO: Change to your region
 
-  # OpenTelemetry configuration for Jaeger
+  # OpenTelemetry configuration for Jaeger (all-in-one deployment)
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://jaeger-collector.monitoring.svc.cluster.local:4318"
+    value: "http://jaeger-all-in-one.monitoring.svc.cluster.local:4318"
   - name: OTEL_EXPORTER_OTLP_PROTOCOL
     value: "http/protobuf"
   - name: OTEL_SERVICE_NAME
@@ -64,7 +64,7 @@ env:
 
 # LiteLLM proxy configuration
 # This gets mounted as config.yaml
-config:
+proxy_config:
   model_list:
     # Claude 3.5 Sonnet - Best for complex tasks
     - model_name: claude-3.5-sonnet
@@ -194,7 +194,7 @@ serviceMonitor:
     release: kube-prometheus  # Must match Prometheus selector
 
 # Pod disruption budget for high availability
-podDisruptionBudget:
+pdb:
   enabled: true
   minAvailable: 1
 

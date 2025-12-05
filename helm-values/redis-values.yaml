@@ -5,7 +5,7 @@
 # Pin image version for stability
 image:
   repository: redis
-  tag: "7.4-alpine"
+  tag: "7.4.1-alpine"
 
 # Number of redis master/slave pods
 replicas: 3
@@ -16,11 +16,26 @@ redis:
   masterGroupName: "mymaster"
   config:
     maxmemory-policy: "volatile-lru"
+  # Liveness and readiness probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  # Resource limits for redis container
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
 
 # Authentication using ExternalSecret
 auth: true
-redisPassword:
-  # Password will be provided via existingSecret
 existingSecret: redis-credentials
 authKey: redis-password
 
@@ -37,32 +52,12 @@ persistentVolume:
   accessModes:
     - ReadWriteOnce
 
-# Resource limits
-resources:
-  requests:
-    cpu: "100m"
-    memory: "256Mi"
-  limits:
-    cpu: "500m"
-    memory: "512Mi"
-
 # High availability - spread pods across nodes
 hardAntiAffinity: true
 
 # Pod disruption budget
 podDisruptionBudget:
   maxUnavailable: 1
-
-# Liveness and readiness probes
-redis:
-  livenessProbe:
-    enabled: true
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    enabled: true
-    initialDelaySeconds: 5
-    periodSeconds: 10
 
 # HAProxy for load balancing (recommended for external access)
 haproxy:
@@ -72,14 +67,13 @@ haproxy:
 exporter:
   enabled: true
   image: quay.io/oliver006/redis_exporter
-  tag: v1.66.0
+  tag: v1.67.0
   port: 9121
-
-serviceMonitor:
-  enabled: true
-  namespace: monitoring
-  labels:
-    release: kube-prometheus
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    labels:
+      release: kube-prometheus
 
 # Network policy (optional - enable for enhanced security)
 networkPolicy:
@@ -91,6 +85,6 @@ securityContext:
   fsGroup: 1000
   runAsNonRoot: true
 
-# Common labels
-commonLabels:
+# Extra labels
+labels:
   app.kubernetes.io/part-of: litellm-stack

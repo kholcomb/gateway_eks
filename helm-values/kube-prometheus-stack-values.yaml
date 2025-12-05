@@ -71,7 +71,7 @@ grafana:
   additionalDataSources:
     - name: Jaeger
       type: jaeger
-      url: http://jaeger-query.monitoring.svc.cluster.local:16686
+      url: http://jaeger-all-in-one.monitoring.svc.cluster.local:16686
       access: proxy
       isDefault: false
 

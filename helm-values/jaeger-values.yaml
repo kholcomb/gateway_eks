@@ -15,7 +15,7 @@ allInOne:
 
   image:
     repository: jaegertracing/all-in-one
-    tag: "1.53"
+    tag: "1.76.0"
 
   # In-memory storage (data lost on restart)
   # For production, configure Elasticsearch or Cassandra
