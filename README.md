@@ -32,13 +32,13 @@ This directory contains all configuration files and scripts to deploy a complete
 
 ## Components
 
-| Component | Helm Chart | Purpose |
-|-----------|------------|---------|
-| LiteLLM | `oci://ghcr.io/berriai/litellm-helm` | API gateway to Bedrock |
-| OpenWebUI | `open-webui/open-webui` | Chat frontend |
-| Redis HA | `dandydev/redis-ha` | Caching & rate limiting (uses official Redis image) |
-| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | Monitoring |
-| External Secrets Operator | `external-secrets/external-secrets` | Secrets sync |
+| Component | Helm Chart | Image Version | Purpose |
+|-----------|------------|---------------|---------|
+| LiteLLM | `oci://ghcr.io/berriai/litellm-helm` | v1.80.5-stable | API gateway to Bedrock |
+| OpenWebUI | `open-webui/open-webui` | latest | Chat frontend |
+| Redis HA | `dandydev/redis-ha` | redis:7.4-alpine | Caching & rate limiting |
+| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | - | Monitoring |
+| External Secrets Operator | `external-secrets/external-secrets` | - | Secrets sync |
 
 ## Directory Structure
 
@@ -53,7 +53,7 @@ k8s-deploy/
 ├── manifests/
 │   ├── namespaces.yaml              # Kubernetes namespaces
 │   ├── cluster-secret-store.yaml    # AWS Secrets Manager store
-│   ├── litellm-external-secret.yaml # LiteLLM secrets
+│   ├── litellm-external-secret.yaml # LiteLLM + Redis secrets
 │   └── openwebui-external-secret.yaml # OpenWebUI secrets
 ├── iam/
 │   ├── litellm-bedrock-policy.json  # Bedrock access policy
@@ -111,16 +111,16 @@ chmod +x scripts/*.sh
 ./scripts/deploy.sh all
 
 # Or run individual steps:
-./scripts/deploy.sh irsa          # Create IRSA roles
-./scripts/deploy.sh secrets       # Create AWS secrets
-./scripts/deploy.sh helm-repos    # Add Helm repos
-./scripts/deploy.sh namespaces    # Create namespaces
-./scripts/deploy.sh external-secrets  # Deploy ESO
-./scripts/deploy.sh monitoring    # Deploy Prometheus/Grafana
-./scripts/deploy.sh redis         # Deploy Redis
-./scripts/deploy.sh litellm       # Deploy LiteLLM
-./scripts/deploy.sh openwebui     # Deploy OpenWebUI
-./scripts/deploy.sh verify        # Verify deployment
+./scripts/deploy.sh irsa              # Create IRSA roles
+./scripts/deploy.sh secrets           # Create AWS secrets
+./scripts/deploy.sh helm-repos        # Add Helm repos
+./scripts/deploy.sh namespaces        # Create namespaces
+./scripts/deploy.sh external-secrets  # Deploy ESO + create secret stores
+./scripts/deploy.sh monitoring        # Deploy Prometheus/Grafana
+./scripts/deploy.sh redis             # Deploy Redis
+./scripts/deploy.sh litellm           # Deploy LiteLLM
+./scripts/deploy.sh openwebui         # Deploy OpenWebUI
+./scripts/deploy.sh verify            # Verify deployment
 ```
 
 ### 5. Set Up Bastion for Testing
@@ -132,11 +132,16 @@ chmod +x scripts/*.sh
 Then connect and access services:
 
 ```bash
-aws ssm start-session --target i-xxxxx
+# Connect using the script (auto-discovers instance ID):
+./scripts/setup-bastion.sh connect
+
+# Or manually via SSM:
+aws ssm start-session --target i-xxxxx --region $AWS_REGION
 
 # Inside bastion:
-llm-ui        # Port-forward OpenWebUI to localhost:8080
-llm-grafana   # Port-forward Grafana to localhost:3000
+llm-ui          # Port-forward OpenWebUI to localhost:8080
+llm-grafana     # Port-forward Grafana to localhost:3000
+llm-prometheus  # Port-forward Prometheus to localhost:9090
 ```
 
 ## Manual Deployment (Without Script)
@@ -254,12 +259,20 @@ kubectl apply -f manifests/namespaces.yaml
 helm upgrade --install external-secrets external-secrets/external-secrets \
     -n external-secrets -f helm-values/external-secrets-values.yaml --wait
 
-# Wait for webhook, then create secret stores
+# Wait for webhook to be ready
 kubectl rollout status deployment/external-secrets-webhook -n external-secrets --timeout=120s
+
+# Create secret stores and wait for them to be ready
 kubectl apply -f manifests/cluster-secret-store.yaml
-sleep 10
+kubectl wait --for=condition=Ready clustersecretstore/aws-secrets-manager --timeout=60s
+
+# Create ExternalSecrets
 kubectl apply -f manifests/litellm-external-secret.yaml
 kubectl apply -f manifests/openwebui-external-secret.yaml
+
+# Wait for secrets to sync
+kubectl wait --for=condition=Ready externalsecret/litellm-secrets -n litellm --timeout=60s
+kubectl wait --for=condition=Ready externalsecret/openwebui-secrets -n open-webui --timeout=60s
 
 # Deploy monitoring stack
 helm upgrade --install kube-prometheus prometheus-community/kube-prometheus-stack \
@@ -292,26 +305,30 @@ kubectl get externalsecret -A
 
 Pre-configured models in `litellm-values.yaml`:
 
-| Model Name | Bedrock Model |
-|------------|---------------|
-| claude-3.5-sonnet | anthropic.claude-3-5-sonnet-20241022-v2:0 |
-| claude-3-sonnet | anthropic.claude-3-sonnet-20240229-v1:0 |
-| claude-3-haiku | anthropic.claude-3-haiku-20240307-v1:0 |
-| claude-3-opus | anthropic.claude-3-opus-20240229-v1:0 |
-| llama-3.1-70b | meta.llama3-1-70b-instruct-v1:0 |
-| llama-3.1-8b | meta.llama3-1-8b-instruct-v1:0 |
-| mistral-large | mistral.mistral-large-2407-v1:0 |
+| Model Name | Bedrock Model | Max Tokens |
+|------------|---------------|------------|
+| claude-3.5-sonnet | anthropic.claude-3-5-sonnet-20241022-v2:0 | 8192 |
+| claude-3-sonnet | anthropic.claude-3-sonnet-20240229-v1:0 | 4096 |
+| claude-3-haiku | anthropic.claude-3-haiku-20240307-v1:0 | 4096 |
+| claude-3-opus | anthropic.claude-3-opus-20240229-v1:0 | 4096 |
+| llama-3.1-70b | meta.llama3-1-70b-instruct-v1:0 | 2048 |
+| llama-3.1-8b | meta.llama3-1-8b-instruct-v1:0 | 2048 |
+| mistral-large | mistral.mistral-large-2407-v1:0 | 4096 |
+
+LiteLLM image version: `v1.80.5-stable` (pinned for stability)
 
 ### Secrets Required
 
 Create these in AWS Secrets Manager before deployment:
 
-| Secret Name | Description |
-|-------------|-------------|
-| `litellm/database-url` | PostgreSQL connection string |
-| `litellm/master-key` | LiteLLM admin key (auto-generated) |
-| `litellm/redis-password` | Redis password (auto-generated) |
-| `litellm/salt-key` | Salt key for secure hashing (auto-generated, cannot be changed after deployment) |
+| Secret Name | Description | Auto-Generated |
+|-------------|-------------|----------------|
+| `litellm/database-url` | PostgreSQL connection string | No (must create manually) |
+| `litellm/master-key` | LiteLLM admin key | Yes |
+| `litellm/redis-password` | Redis password | Yes |
+| `litellm/salt-key` | Salt key for secure hashing (cannot be changed after deployment) | Yes |
+
+The deploy script auto-generates `master-key`, `redis-password`, and `salt-key` if they don't exist. You must create `database-url` manually before running the deployment.
 
 ### IAM Roles
 
@@ -349,7 +366,7 @@ https://github.com/BerriAI/litellm/tree/main/cookbook/misc/grafana_dashboard
 ## Cleanup
 
 ```bash
-# Delete bastion
+# Delete bastion (also accepts 'delete')
 ./scripts/setup-bastion.sh cleanup
 
 # Delete Helm releases
