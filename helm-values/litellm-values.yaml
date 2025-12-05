@@ -54,6 +54,14 @@ env:
   - name: AWS_DEFAULT_REGION
     value: "us-east-1"  # TODO: Change to your region
 
+  # OpenTelemetry configuration for Jaeger
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://jaeger-collector.monitoring.svc.cluster.local:4318"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "http/protobuf"
+  - name: OTEL_SERVICE_NAME
+    value: "litellm-proxy"
+
 # LiteLLM proxy configuration
 # This gets mounted as config.yaml
 config:
@@ -113,10 +121,10 @@ config:
 
   # LiteLLM settings
   litellm_settings:
-    # Enable Prometheus metrics
-    callbacks: ["prometheus"]
-    success_callback: ["prometheus"]
-    failure_callback: ["prometheus"]
+    # Enable Prometheus metrics and OpenTelemetry tracing
+    callbacks: ["prometheus", "otel"]
+    success_callback: ["prometheus", "otel"]
+    failure_callback: ["prometheus", "otel"]
 
     # Request/response logging
     set_verbose: false
@@ -129,6 +137,10 @@ config:
       port: 6379
       password: "os.environ/REDIS_PASSWORD"
       ttl: 3600
+
+    # OpenTelemetry configuration
+    otel: true
+    service_name: "litellm-proxy"
 
   # General proxy settings
   general_settings:

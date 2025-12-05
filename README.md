@@ -5,23 +5,31 @@ This directory contains all configuration files and scripts to deploy a complete
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         AWS EKS Cluster                             │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────────────────────┐│
-│  │  OpenWebUI  │──▶│   LiteLLM   │──▶│      Amazon Bedrock         ││
-│  │  (Frontend) │   │   (Proxy)   │   │   (Claude, Llama, etc.)     ││
-│  └─────────────┘   └──────┬──────┘   └─────────────────────────────┘│
-│                           │                                          │
-│  ┌────────────────────────┼────────────────────────────────────────┐│
-│  │              Observability Stack                                 ││
-│  │  Prometheus ◀──metrics──┘    Grafana    Alertmanager            ││
-│  └──────────────────────────────────────────────────────────────────┘│
-│                                                                      │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────────┐ │
-│  │ External Secrets │  │      Redis       │  │   EC2 Bastion      │ │
-│  │    Operator      │  │    (caching)     │  │   (testing)        │ │
-│  └────────┬─────────┘  └──────────────────┘  └────────────────────┘ │
-└───────────┼─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           AWS EKS Cluster                               │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────────────────────────┐│
+│  │  OpenWebUI  │──▶│   LiteLLM   │──▶│        Amazon Bedrock           ││
+│  │  (Frontend) │   │   (Proxy)   │   │   (Claude, Llama, Mistral)      ││
+│  └─────────────┘   └──────┬──────┘   └─────────────────────────────────┘│
+│                           │                                              │
+│  ┌────────────────────────┴────────────────────────────────────────────┐│
+│  │                    Observability Stack                               ││
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────────┐ ││
+│  │  │ Prometheus │◀─│  Metrics   │  │  Grafana   │  │  Alertmanager  │ ││
+│  │  │            │  │ (litellm)  │  │ Dashboards │  │                │ ││
+│  │  └────────────┘  └────────────┘  └─────┬──────┘  └────────────────┘ ││
+│  │                                        │                             ││
+│  │  ┌────────────┐  ┌────────────────────┐│                            ││
+│  │  │   Jaeger   │◀─│ OpenTelemetry      ││  (Distributed Tracing)     ││
+│  │  │   (OTLP)   │  │ Traces (litellm)   ││                            ││
+│  │  └────────────┘  └────────────────────┘│                            ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+│                                                                          │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────────────┐ │
+│  │ External Secrets │  │      Redis       │  │     EC2 Bastion        │ │
+│  │    Operator      │  │    (caching)     │  │     (testing)          │ │
+│  └────────┬─────────┘  └──────────────────┘  └────────────────────────┘ │
+└───────────┼─────────────────────────────────────────────────────────────┘
             │
             ▼
 ┌─────────────────────┐   ┌─────────────────────┐
@@ -37,7 +45,8 @@ This directory contains all configuration files and scripts to deploy a complete
 | LiteLLM | `oci://ghcr.io/berriai/litellm-helm` | v1.80.5-stable | API gateway to Bedrock |
 | OpenWebUI | `open-webui/open-webui` | latest | Chat frontend |
 | Redis HA | `dandydev/redis-ha` | redis:7.4-alpine | Caching & rate limiting |
-| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | - | Monitoring |
+| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | - | Metrics & alerting |
+| Jaeger | `jaegertracing/jaeger` | 1.53 | Distributed tracing |
 | External Secrets Operator | `external-secrets/external-secrets` | - | Secrets sync |
 
 ## Directory Structure
@@ -45,16 +54,19 @@ This directory contains all configuration files and scripts to deploy a complete
 ```
 k8s-deploy/
 ├── helm-values/
-│   ├── litellm-values.yaml          # LiteLLM configuration
+│   ├── litellm-values.yaml          # LiteLLM configuration (+ OpenTelemetry)
 │   ├── openwebui-values.yaml        # OpenWebUI configuration
 │   ├── redis-values.yaml            # Redis configuration
-│   ├── kube-prometheus-stack-values.yaml  # Monitoring config
+│   ├── kube-prometheus-stack-values.yaml  # Prometheus/Grafana config
+│   ├── jaeger-values.yaml           # Jaeger distributed tracing
 │   └── external-secrets-values.yaml # ESO configuration
 ├── manifests/
 │   ├── namespaces.yaml              # Kubernetes namespaces
 │   ├── cluster-secret-store.yaml    # AWS Secrets Manager store
 │   ├── litellm-external-secret.yaml # LiteLLM + Redis secrets
 │   └── openwebui-external-secret.yaml # OpenWebUI secrets
+├── grafana_dashboards/
+│   └── litellm-prometheus.json      # LiteLLM metrics dashboard
 ├── iam/
 │   ├── litellm-bedrock-policy.json  # Bedrock access policy
 │   ├── external-secrets-policy.json # Secrets Manager policy
@@ -111,12 +123,14 @@ chmod +x scripts/*.sh
 ./scripts/deploy.sh all
 
 # Or run individual steps:
+./scripts/deploy.sh validate          # Validate all YAML files (syntax + K8s spec)
 ./scripts/deploy.sh irsa              # Create IRSA roles
 ./scripts/deploy.sh secrets           # Create AWS secrets
 ./scripts/deploy.sh helm-repos        # Add Helm repos
 ./scripts/deploy.sh namespaces        # Create namespaces
 ./scripts/deploy.sh external-secrets  # Deploy ESO + create secret stores
-./scripts/deploy.sh monitoring        # Deploy Prometheus/Grafana
+./scripts/deploy.sh monitoring        # Deploy Prometheus/Grafana + dashboards
+./scripts/deploy.sh jaeger            # Deploy Jaeger for distributed tracing
 ./scripts/deploy.sh redis             # Deploy Redis
 ./scripts/deploy.sh litellm           # Deploy LiteLLM
 ./scripts/deploy.sh openwebui         # Deploy OpenWebUI
@@ -346,22 +360,54 @@ From the bastion instance:
 | OpenWebUI | `kubectl port-forward svc/open-webui 8080:80 -n open-webui --address 0.0.0.0` | http://localhost:8080 |
 | Grafana | `kubectl port-forward svc/kube-prometheus-grafana 3000:80 -n monitoring --address 0.0.0.0` | http://localhost:3000 |
 | Prometheus | `kubectl port-forward svc/kube-prometheus-kube-prome-prometheus 9090:9090 -n monitoring --address 0.0.0.0` | http://localhost:9090 |
+| Jaeger UI | `kubectl port-forward svc/jaeger-query 16686:16686 -n monitoring --address 0.0.0.0` | http://localhost:16686 |
 
-## Monitoring
+## Observability
+
+The stack includes comprehensive observability with metrics, tracing, and dashboards.
 
 ### Prometheus Metrics
 
 LiteLLM exposes metrics at `/metrics`:
 
-- `litellm_proxy_total_requests_metric` - Total requests
-- `litellm_proxy_failed_requests_metric` - Failed requests
-- `litellm_spend_metric` - Token spend
-- `litellm_deployment_state` - Model health status
+| Metric | Type | Description |
+|--------|------|-------------|
+| `litellm_proxy_total_requests_metric` | Counter | Total requests by model, user, status |
+| `litellm_proxy_failed_requests_metric` | Counter | Failed requests with exception details |
+| `litellm_spend_metric` | Counter | Token spend by model/user |
+| `litellm_total_tokens_metric` | Counter | Total tokens (input + output) |
+| `litellm_request_total_latency_metric` | Histogram | Request latency percentiles |
+| `litellm_llm_api_time_to_first_token_metric` | Histogram | Time to first token (streaming) |
+| `litellm_deployment_state` | Gauge | Model health (0=healthy, 1=partial, 2=outage) |
+| `litellm_redis_latency` | Histogram | Redis operation latency |
+
+### Distributed Tracing (OpenTelemetry + Jaeger)
+
+LiteLLM is configured to export traces via OpenTelemetry to Jaeger. This enables:
+
+- **End-to-end request tracing** - See the full journey from OpenWebUI → LiteLLM → Bedrock
+- **Latency breakdown** - Identify bottlenecks in the request pipeline
+- **Error debugging** - Trace failed requests to their root cause
+
+Access Jaeger UI at `http://localhost:16686` (after port-forward).
 
 ### Grafana Dashboards
 
-Import LiteLLM's maintained dashboards from:
+Pre-installed dashboards:
+
+| Dashboard | Description |
+|-----------|-------------|
+| **LiteLLM Proxy** | Request rates, latency, token usage, model health, spend |
+| **Kubernetes / Compute Resources** | Default K8s cluster dashboards |
+| **Node Exporter** | Host-level metrics |
+
+Additional dashboards from LiteLLM:
 https://github.com/BerriAI/litellm/tree/main/cookbook/misc/grafana_dashboard
+
+### Datasources in Grafana
+
+- **Prometheus** - Metrics (auto-configured)
+- **Jaeger** - Distributed traces
 
 ## Cleanup
 
@@ -373,6 +419,7 @@ https://github.com/BerriAI/litellm/tree/main/cookbook/misc/grafana_dashboard
 helm uninstall open-webui -n open-webui
 helm uninstall litellm -n litellm
 helm uninstall redis -n litellm
+helm uninstall jaeger -n monitoring
 helm uninstall kube-prometheus -n monitoring
 helm uninstall external-secrets -n external-secrets
 
@@ -414,8 +461,9 @@ kubectl get sa litellm-sa -n litellm -o yaml
 
 ## Future Enhancements
 
-- Add OpenTelemetry for distributed tracing
 - Configure Alertmanager with Slack/PagerDuty
 - Add network policies for pod-to-pod security
 - Configure HPA for auto-scaling LiteLLM
 - Add Loki for log aggregation
+- Add Grafana Tempo for long-term trace storage (Jaeger uses in-memory by default)
+- Consider service mesh (Istio/Linkerd) for mTLS and advanced traffic management

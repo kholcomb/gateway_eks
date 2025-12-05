@@ -28,6 +28,127 @@ error() {
     exit 1
 }
 
+warn() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARN: $*" >&2
+}
+
+# ============================================================================
+# Validation Functions
+# ============================================================================
+
+# Validate YAML files for syntax and Kubernetes spec compliance
+validate_yaml_files() {
+    log "Validating YAML files..."
+    local has_errors=false
+
+    # Validate manifest files (kubectl dry-run for spec validation)
+    for file in "$BASE_DIR"/manifests/*.yaml; do
+        if [[ -f "$file" ]]; then
+            log "Validating $file..."
+            if ! kubectl apply --dry-run=client -f "$file" > /dev/null 2>&1; then
+                error_msg=$(kubectl apply --dry-run=client -f "$file" 2>&1)
+                warn "Validation failed for $file: $error_msg"
+                has_errors=true
+            fi
+        fi
+    done
+
+    # Validate Helm values files (YAML syntax check via kubectl)
+    for file in "$BASE_DIR"/helm-values/*.yaml; do
+        if [[ -f "$file" ]]; then
+            log "Validating YAML syntax: $file..."
+            # Use kubectl to parse YAML - will fail on syntax errors
+            if ! kubectl create configmap yaml-test --from-file=test="$file" --dry-run=client -o yaml > /dev/null 2>&1; then
+                warn "YAML syntax error in $file"
+                has_errors=true
+            fi
+        fi
+    done
+
+    if [[ "$has_errors" == "true" ]]; then
+        error "YAML validation failed. Please fix the errors above."
+    fi
+
+    log "All YAML files validated successfully"
+}
+
+# Validate Helm chart values against chart schema
+validate_helm_values() {
+    local chart="$1"
+    local values_file="$2"
+    local release_name="$3"
+
+    log "Validating Helm values for $release_name..."
+
+    # Use helm template to validate values against chart
+    if ! helm template "$release_name" "$chart" -f "$values_file" > /dev/null 2>&1; then
+        error_msg=$(helm template "$release_name" "$chart" -f "$values_file" 2>&1)
+        error "Helm validation failed for $release_name: $error_msg"
+    fi
+}
+
+# Wait for deployment to be ready with timeout
+wait_for_deployment() {
+    local namespace="$1"
+    local deployment="$2"
+    local timeout="${3:-300s}"
+
+    log "Waiting for deployment $deployment in namespace $namespace..."
+    if ! kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout="$timeout"; then
+        error "Deployment $deployment failed to become ready within $timeout"
+    fi
+    log "Deployment $deployment is ready"
+}
+
+# Wait for statefulset to be ready with timeout
+wait_for_statefulset() {
+    local namespace="$1"
+    local statefulset="$2"
+    local timeout="${3:-300s}"
+
+    log "Waiting for statefulset $statefulset in namespace $namespace..."
+    if ! kubectl rollout status statefulset/"$statefulset" -n "$namespace" --timeout="$timeout"; then
+        error "StatefulSet $statefulset failed to become ready within $timeout"
+    fi
+    log "StatefulSet $statefulset is ready"
+}
+
+# Wait for all pods in a namespace with a label selector to be ready
+wait_for_pods() {
+    local namespace="$1"
+    local selector="$2"
+    local timeout="${3:-300s}"
+
+    log "Waiting for pods with selector '$selector' in namespace $namespace..."
+    if ! kubectl wait --for=condition=Ready pods -l "$selector" -n "$namespace" --timeout="$timeout"; then
+        warn "Some pods with selector '$selector' are not ready. Checking status..."
+        kubectl get pods -l "$selector" -n "$namespace"
+        error "Pods failed to become ready within $timeout"
+    fi
+    log "All pods with selector '$selector' are ready"
+}
+
+# Verify Helm release is deployed and healthy
+verify_helm_release() {
+    local release="$1"
+    local namespace="$2"
+
+    log "Verifying Helm release $release in namespace $namespace..."
+
+    # Check release exists and is deployed
+    if ! helm status "$release" -n "$namespace" > /dev/null 2>&1; then
+        error "Helm release $release not found in namespace $namespace"
+    fi
+
+    local status
+    status=$(helm status "$release" -n "$namespace" -o json | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ "$status" != "deployed" ]]; then
+        error "Helm release $release is in state '$status', expected 'deployed'"
+    fi
+
+    log "Helm release $release is deployed successfully"
+}
+
 check_prerequisites() {
     log "Checking prerequisites..."
 
@@ -216,6 +337,7 @@ add_helm_repos() {
     helm repo add dandydev https://dandydeveloper.github.io/charts || true
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
     helm repo add open-webui https://helm.openwebui.com/ || true
+    helm repo add jaegertracing https://jaegertracing.github.io/helm-charts || true
 
     helm repo update
 
@@ -245,10 +367,15 @@ deploy_external_secrets() {
         -f /tmp/external-secrets-values.yaml \
         --wait --timeout 5m
 
-    # Wait for webhook to be ready
-    kubectl rollout status deployment/external-secrets-webhook -n external-secrets --timeout=120s
+    # Verify Helm release
+    verify_helm_release "external-secrets" "external-secrets"
 
-    log "External Secrets Operator deployed"
+    # Wait for all ESO components to be ready
+    wait_for_deployment "external-secrets" "external-secrets" "120s"
+    wait_for_deployment "external-secrets" "external-secrets-webhook" "120s"
+    wait_for_deployment "external-secrets" "external-secrets-cert-controller" "120s"
+
+    log "External Secrets Operator deployed and verified"
 }
 
 # ============================================================================
@@ -303,7 +430,60 @@ deploy_monitoring() {
         -f "$BASE_DIR/helm-values/kube-prometheus-stack-values.yaml" \
         --wait --timeout 10m
 
-    log "kube-prometheus-stack deployed"
+    # Verify Helm release
+    verify_helm_release "kube-prometheus" "monitoring"
+
+    # Verify key pods are ready using kubectl wait
+    log "Verifying Prometheus stack components..."
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=grafana -n monitoring --timeout=180s
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=300s
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=alertmanager -n monitoring --timeout=180s
+
+    log "kube-prometheus-stack deployed and verified"
+
+    # Deploy Grafana dashboards as ConfigMaps
+    deploy_grafana_dashboards
+}
+
+# ============================================================================
+# Step 7a: Deploy Grafana Dashboards
+# ============================================================================
+deploy_grafana_dashboards() {
+    log "Deploying Grafana dashboards..."
+
+    # Create ConfigMap from LiteLLM Prometheus dashboard
+    if [[ -f "$BASE_DIR/grafana_dashboards/litellm-prometheus.json" ]]; then
+        kubectl create configmap grafana-dashboard-litellm \
+            --from-file=litellm-prometheus.json="$BASE_DIR/grafana_dashboards/litellm-prometheus.json" \
+            -n monitoring \
+            --dry-run=client -o yaml | \
+            kubectl label --local -f - grafana_dashboard=1 -o yaml | \
+            kubectl apply -f -
+        log "LiteLLM Prometheus dashboard deployed"
+    fi
+
+    log "Grafana dashboards deployed"
+}
+
+# ============================================================================
+# Step 7b: Deploy Jaeger for Distributed Tracing
+# ============================================================================
+deploy_jaeger() {
+    log "Deploying Jaeger for distributed tracing..."
+
+    helm upgrade --install jaeger jaegertracing/jaeger \
+        -n monitoring \
+        -f "$BASE_DIR/helm-values/jaeger-values.yaml" \
+        --wait --timeout 5m
+
+    # Verify Helm release
+    verify_helm_release "jaeger" "monitoring"
+
+    # Verify Jaeger pod is ready
+    log "Verifying Jaeger components..."
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=jaeger -n monitoring --timeout=120s
+
+    log "Jaeger deployed and verified"
 }
 
 # ============================================================================
@@ -317,7 +497,22 @@ deploy_redis() {
         -f "$BASE_DIR/helm-values/redis-values.yaml" \
         --wait --timeout 5m
 
-    log "Redis HA deployed"
+    # Verify Helm release
+    verify_helm_release "redis" "litellm"
+
+    # Verify Redis pods are ready (StatefulSet)
+    log "Verifying Redis HA components..."
+    kubectl wait --for=condition=Ready pod -l app=redis-ha -n litellm --timeout=180s
+
+    # Verify Redis Sentinel is responding
+    log "Checking Redis Sentinel connectivity..."
+    if kubectl exec -n litellm redis-redis-ha-server-0 -- redis-cli -p 26379 SENTINEL masters > /dev/null 2>&1; then
+        log "Redis Sentinel is responding"
+    else
+        warn "Redis Sentinel check failed - may still be initializing"
+    fi
+
+    log "Redis HA deployed and verified"
 }
 
 # ============================================================================
@@ -340,7 +535,24 @@ deploy_litellm() {
     # Clean up temp chart directory
     rm -rf /tmp/litellm-helm
 
-    log "LiteLLM deployed"
+    # Verify Helm release
+    verify_helm_release "litellm" "litellm"
+
+    # Verify LiteLLM pods are ready
+    log "Verifying LiteLLM components..."
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=litellm -n litellm --timeout=180s
+
+    # Verify LiteLLM health endpoint
+    log "Checking LiteLLM health endpoint..."
+    local pod_name
+    pod_name=$(kubectl get pod -l app.kubernetes.io/name=litellm -n litellm -o jsonpath='{.items[0].metadata.name}')
+    if kubectl exec -n litellm "$pod_name" -- wget -q -O - http://localhost:4000/health/liveliness > /dev/null 2>&1; then
+        log "LiteLLM health check passed"
+    else
+        warn "LiteLLM health check failed - service may still be initializing"
+    fi
+
+    log "LiteLLM deployed and verified"
 }
 
 # ============================================================================
@@ -354,7 +566,14 @@ deploy_openwebui() {
         -f "$BASE_DIR/helm-values/openwebui-values.yaml" \
         --wait --timeout 5m
 
-    log "OpenWebUI deployed"
+    # Verify Helm release
+    verify_helm_release "open-webui" "open-webui"
+
+    # Verify OpenWebUI pod is ready
+    log "Verifying OpenWebUI components..."
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=open-webui -n open-webui --timeout=180s
+
+    log "OpenWebUI deployed and verified"
 }
 
 # ============================================================================
@@ -367,13 +586,13 @@ verify_deployment() {
     echo "============================================"
     echo "Pod Status:"
     echo "============================================"
-    kubectl get pods -A | grep -E 'litellm|open-webui|prometheus|redis|external-secrets|monitoring'
+    kubectl get pods -A | grep -E 'litellm|open-webui|prometheus|redis|external-secrets|monitoring|jaeger'
 
     echo ""
     echo "============================================"
     echo "Services:"
     echo "============================================"
-    kubectl get svc -A | grep -E 'litellm|open-webui|prometheus|grafana|redis'
+    kubectl get svc -A | grep -E 'litellm|open-webui|prometheus|grafana|redis|jaeger'
 
     echo ""
     echo "============================================"
@@ -393,6 +612,10 @@ verify_deployment() {
     echo "kubectl port-forward svc/kube-prometheus-kube-prome-prometheus 9090:9090 -n monitoring --address 0.0.0.0"
     echo "# Then open http://localhost:9090"
     echo ""
+    echo "# Access Jaeger UI (Distributed Tracing):"
+    echo "kubectl port-forward svc/jaeger-query 16686:16686 -n monitoring --address 0.0.0.0"
+    echo "# Then open http://localhost:16686"
+    echo ""
 
     log "Deployment verification complete"
 }
@@ -409,6 +632,9 @@ main() {
     check_prerequisites
 
     case "${1:-all}" in
+        validate)
+            validate_yaml_files
+            ;;
         irsa)
             create_irsa_roles
             ;;
@@ -428,6 +654,12 @@ main() {
         monitoring)
             deploy_monitoring
             ;;
+        dashboards)
+            deploy_grafana_dashboards
+            ;;
+        jaeger)
+            deploy_jaeger
+            ;;
         redis)
             deploy_redis
             ;;
@@ -441,6 +673,7 @@ main() {
             verify_deployment
             ;;
         all)
+            validate_yaml_files
             create_irsa_roles
             create_aws_secrets
             add_helm_repos
@@ -448,13 +681,14 @@ main() {
             deploy_external_secrets
             create_secret_stores
             deploy_monitoring
+            deploy_jaeger
             deploy_redis
             deploy_litellm
             deploy_openwebui
             verify_deployment
             ;;
         *)
-            echo "Usage: $0 {all|irsa|secrets|helm-repos|namespaces|external-secrets|monitoring|redis|litellm|openwebui|verify}"
+            echo "Usage: $0 {validate|all|irsa|secrets|helm-repos|namespaces|external-secrets|monitoring|dashboards|jaeger|redis|litellm|openwebui|verify}"
             exit 1
             ;;
     esac

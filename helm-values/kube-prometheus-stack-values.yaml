@@ -60,11 +60,24 @@ grafana:
       enabled: true
       label: grafana_dashboard
       searchNamespace: ALL
+      # Folder for custom dashboards
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
     datasources:
       enabled: true
 
-  # Additional datasources (optional)
-  # additionalDataSources: []
+  # Additional datasources for Jaeger tracing
+  additionalDataSources:
+    - name: Jaeger
+      type: jaeger
+      url: http://jaeger-query.monitoring.svc.cluster.local:16686
+      access: proxy
+      isDefault: false
+
+  # Default Kubernetes dashboards
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: browser
 
   # Resource limits
   resources:

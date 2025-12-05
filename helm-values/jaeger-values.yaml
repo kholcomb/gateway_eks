@@ -1,0 +1,63 @@
+# Jaeger Helm Chart Values
+# Helm repo: https://jaegertracing.github.io/helm-charts
+# Chart: jaeger
+
+# Use all-in-one deployment for simplicity (suitable for dev/small prod)
+# For large-scale production, consider separate collector/query/agent
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+
+# All-in-one deployment (collector + query + agent in single pod)
+allInOne:
+  enabled: true
+  replicas: 1
+
+  image:
+    repository: jaegertracing/all-in-one
+    tag: "1.53"
+
+  # In-memory storage (data lost on restart)
+  # For production, configure Elasticsearch or Cassandra
+  extraEnv:
+    - name: MEMORY_MAX_TRACES
+      value: "50000"
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  service:
+    type: ClusterIP
+
+# Disable separate components when using all-in-one
+collector:
+  enabled: false
+
+query:
+  enabled: false
+
+agent:
+  enabled: false
+
+# Storage configuration
+storage:
+  type: memory
+
+# Service ports
+# - 6831/udp: Thrift compact protocol (agent)
+# - 6832/udp: Thrift binary protocol (agent)
+# - 5778:     Config server
+# - 16686:    Query UI
+# - 4317:     OTLP gRPC
+# - 4318:     OTLP HTTP
+# - 14250:    gRPC (collector)
+# - 14268:    HTTP (collector)
+# - 14269:    Admin/health
+
+# OTLP receiver enabled by default in recent Jaeger versions
+# LiteLLM will send traces via OTLP to port 4317 (gRPC) or 4318 (HTTP)
