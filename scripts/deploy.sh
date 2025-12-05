@@ -265,16 +265,11 @@ create_secret_stores() {
 
     # Wait for ClusterSecretStore to be ready
     log "Waiting for ClusterSecretStore to be ready..."
-    for i in {1..30}; do
-        if kubectl get clustersecretstore aws-secrets-manager -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; then
-            log "ClusterSecretStore is ready"
-            break
-        fi
-        if [[ $i -eq 30 ]]; then
-            log "WARNING: ClusterSecretStore not ready after 30 attempts"
-        fi
-        sleep 2
-    done
+    if kubectl wait --for=condition=Ready clustersecretstore/aws-secrets-manager --timeout=60s; then
+        log "ClusterSecretStore is ready"
+    else
+        log "WARNING: ClusterSecretStore not ready after 60s"
+    fi
 
     # Apply ExternalSecrets
     kubectl apply -f "$BASE_DIR/manifests/litellm-external-secret.yaml"
@@ -284,17 +279,17 @@ create_secret_stores() {
     log "Waiting for secrets to sync..."
 
     # Wait for ExternalSecrets to sync
-    for i in {1..30}; do
-        LITELLM_STATUS=$(kubectl get externalsecret litellm-secrets -n litellm -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
-        if [[ "$LITELLM_STATUS" == "True" ]]; then
-            log "litellm-secrets synced successfully"
-            break
-        fi
-        if [[ $i -eq 30 ]]; then
-            log "WARNING: litellm-secrets not yet synced. Check ExternalSecret status."
-        fi
-        sleep 2
-    done
+    if kubectl wait --for=condition=Ready externalsecret/litellm-secrets -n litellm --timeout=60s; then
+        log "litellm-secrets synced successfully"
+    else
+        log "WARNING: litellm-secrets not yet synced. Check ExternalSecret status."
+    fi
+
+    if kubectl wait --for=condition=Ready externalsecret/openwebui-secrets -n open-webui --timeout=60s; then
+        log "openwebui-secrets synced successfully"
+    else
+        log "WARNING: openwebui-secrets not yet synced. Check ExternalSecret status."
+    fi
 }
 
 # ============================================================================
