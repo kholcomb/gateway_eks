@@ -1,0 +1,102 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8scontainerlimits
+  annotations:
+    description: >-
+      Requires containers to have CPU and memory limits defined.
+      Prevents resource exhaustion and ensures fair scheduling.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sContainerLimits
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            requireCpuLimits:
+              description: Require CPU limits to be set
+              type: boolean
+              default: true
+            requireMemoryLimits:
+              description: Require memory limits to be set
+              type: boolean
+              default: true
+            requireCpuRequests:
+              description: Require CPU requests to be set
+              type: boolean
+              default: true
+            requireMemoryRequests:
+              description: Require memory requests to be set
+              type: boolean
+              default: true
+            maxCpu:
+              description: Maximum CPU limit allowed (e.g., "4000m")
+              type: string
+            maxMemory:
+              description: Maximum memory limit allowed (e.g., "8Gi")
+              type: string
+            exemptImages:
+              description: List of images to exempt from this policy
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8scontainerlimits
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireCpuLimits
+          not container.resources.limits.cpu
+          msg := sprintf("Container '%v' must have CPU limits defined", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireMemoryLimits
+          not container.resources.limits.memory
+          msg := sprintf("Container '%v' must have memory limits defined", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireCpuRequests
+          not container.resources.requests.cpu
+          msg := sprintf("Container '%v' must have CPU requests defined", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireMemoryRequests
+          not container.resources.requests.memory
+          msg := sprintf("Container '%v' must have memory requests defined", [container.name])
+        }
+
+        # Init containers
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not is_exempt(container.image)
+          input.parameters.requireCpuLimits
+          not container.resources.limits.cpu
+          msg := sprintf("Init container '%v' must have CPU limits defined", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not is_exempt(container.image)
+          input.parameters.requireMemoryLimits
+          not container.resources.limits.memory
+          msg := sprintf("Init container '%v' must have memory limits defined", [container.name])
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }

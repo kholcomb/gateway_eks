@@ -1,0 +1,55 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequireprobes
+  annotations:
+    description: >-
+      Requires containers to have liveness and/or readiness probes defined.
+      Ensures proper health checking for production workloads.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireProbes
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            requireLivenessProbe:
+              description: Require liveness probe to be defined
+              type: boolean
+              default: true
+            requireReadinessProbe:
+              description: Require readiness probe to be defined
+              type: boolean
+              default: true
+            exemptImages:
+              description: List of images to exempt from this policy
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequireprobes
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireLivenessProbe
+          not container.livenessProbe
+          msg := sprintf("Container '%v' must have a liveness probe defined", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          input.parameters.requireReadinessProbe
+          not container.readinessProbe
+          msg := sprintf("Container '%v' must have a readiness probe defined", [container.name])
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }

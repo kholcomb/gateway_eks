@@ -29,6 +29,7 @@ secrets.yaml
 *-secret.yaml
 *-secrets.yaml
 service-account*.json
+THREAT_MODEL.md
 
 # Helm
 charts/
@@ -47,12 +48,23 @@ temp/
 *-generated.yaml
 *-rendered.yaml
 
-# Terraform (if used for infra)
+# Terraform
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
-*.tfvars
-!example.tfvars
+*.tfstate.backup
+*.tfplan
+terraform.tfvars
+!terraform.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
 
 # Python (for local scripts)
 __pycache__/

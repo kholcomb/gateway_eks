@@ -1,0 +1,175 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8spodsecurity
+  annotations:
+    description: >-
+      Enforces Pod Security Standards (restricted profile).
+      Prevents privileged containers, host access, and dangerous capabilities.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sPodSecurity
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowPrivilegeEscalation:
+              description: Allow privilege escalation in containers
+              type: boolean
+              default: false
+            allowPrivileged:
+              description: Allow privileged containers
+              type: boolean
+              default: false
+            allowHostNetwork:
+              description: Allow host network access
+              type: boolean
+              default: false
+            allowHostPID:
+              description: Allow host PID namespace
+              type: boolean
+              default: false
+            allowHostIPC:
+              description: Allow host IPC namespace
+              type: boolean
+              default: false
+            requireNonRoot:
+              description: Require containers to run as non-root
+              type: boolean
+              default: true
+            requireReadOnlyRootFilesystem:
+              description: Require read-only root filesystem
+              type: boolean
+              default: false
+            allowedCapabilities:
+              description: List of capabilities that are allowed to be added
+              type: array
+              items:
+                type: string
+            requiredDropCapabilities:
+              description: Capabilities that must be dropped
+              type: array
+              items:
+                type: string
+            exemptImages:
+              description: List of images to exempt from this policy
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8spodsecurity
+
+        # Block privileged containers
+        violation[{"msg": msg}] {
+          not input.parameters.allowPrivileged
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          container.securityContext.privileged == true
+          msg := sprintf("Container '%v' is not allowed to run as privileged", [container.name])
+        }
+
+        # Block privilege escalation
+        violation[{"msg": msg}] {
+          not input.parameters.allowPrivilegeEscalation
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          container.securityContext.allowPrivilegeEscalation == true
+          msg := sprintf("Container '%v' is not allowed to escalate privileges", [container.name])
+        }
+
+        # Block host network
+        violation[{"msg": msg}] {
+          not input.parameters.allowHostNetwork
+          input.review.object.spec.hostNetwork == true
+          msg := "Pod is not allowed to use host network"
+        }
+
+        # Block host PID namespace
+        violation[{"msg": msg}] {
+          not input.parameters.allowHostPID
+          input.review.object.spec.hostPID == true
+          msg := "Pod is not allowed to use host PID namespace"
+        }
+
+        # Block host IPC namespace
+        violation[{"msg": msg}] {
+          not input.parameters.allowHostIPC
+          input.review.object.spec.hostIPC == true
+          msg := "Pod is not allowed to use host IPC namespace"
+        }
+
+        # Require non-root user
+        violation[{"msg": msg}] {
+          input.parameters.requireNonRoot
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          not running_as_nonroot(container)
+          msg := sprintf("Container '%v' must run as non-root user", [container.name])
+        }
+
+        # Require read-only root filesystem
+        violation[{"msg": msg}] {
+          input.parameters.requireReadOnlyRootFilesystem
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("Container '%v' must have read-only root filesystem", [container.name])
+        }
+
+        # Block disallowed capabilities
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          cap := container.securityContext.capabilities.add[_]
+          not capability_allowed(cap)
+          msg := sprintf("Container '%v' is not allowed to add capability '%v'", [container.name, cap])
+        }
+
+        # Require dropping specific capabilities
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          required := input.parameters.requiredDropCapabilities[_]
+          not capability_dropped(container, required)
+          msg := sprintf("Container '%v' must drop capability '%v'", [container.name, required])
+        }
+
+        running_as_nonroot(container) {
+          container.securityContext.runAsNonRoot == true
+        }
+
+        running_as_nonroot(container) {
+          container.securityContext.runAsUser > 0
+        }
+
+        running_as_nonroot(container) {
+          input.review.object.spec.securityContext.runAsNonRoot == true
+        }
+
+        running_as_nonroot(container) {
+          input.review.object.spec.securityContext.runAsUser > 0
+        }
+
+        capability_allowed(cap) {
+          allowed := input.parameters.allowedCapabilities[_]
+          upper(cap) == upper(allowed)
+        }
+
+        capability_dropped(container, required) {
+          dropped := container.securityContext.capabilities.drop[_]
+          upper(dropped) == upper(required)
+        }
+
+        capability_dropped(container, required) {
+          dropped := container.securityContext.capabilities.drop[_]
+          upper(dropped) == "ALL"
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }

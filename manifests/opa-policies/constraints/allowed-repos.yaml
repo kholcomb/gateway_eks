@@ -1,0 +1,52 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata:
+  name: allowed-image-repos
+  annotations:
+    description: >-
+      Only allow images from approved container registries.
+      This prevents deploying potentially malicious or unvetted images.
+spec:
+  # Start in dryrun mode to audit without blocking
+  # Change to "deny" after validating existing workloads comply
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet", "ReplicaSet"]
+    # Exclude system namespaces
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+  parameters:
+    repos:
+      # Official LiteLLM images
+      - "ghcr.io/berriai/"
+      # OpenWebUI
+      - "ghcr.io/open-webui/"
+      # Redis
+      - "docker.io/library/redis"
+      - "redis"
+      # Bitnami images (common for Helm charts)
+      - "docker.io/bitnami/"
+      # Prometheus/Grafana stack
+      - "quay.io/prometheus/"
+      - "docker.io/grafana/"
+      - "grafana/"
+      - "quay.io/prometheus-operator/"
+      # Jaeger
+      - "docker.io/jaegertracing/"
+      - "jaegertracing/"
+      # External Secrets Operator
+      - "ghcr.io/external-secrets/"
+      # AWS EKS add-ons
+      - "602401143452.dkr.ecr."  # AWS ECR for EKS add-ons
+      - "public.ecr.aws/"
+      # Pause container
+      - "registry.k8s.io/"
+    exemptImages:
+      # AWS CNI and other EKS system images
+      - "602401143452.dkr.ecr.*.amazonaws.com/*"

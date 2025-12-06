@@ -1,0 +1,25 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sBlockLatestTag
+metadata:
+  name: block-latest-tag
+  annotations:
+    description: >-
+      Prevents use of 'latest' tag or untagged images.
+      Ensures reproducible, auditable deployments.
+spec:
+  # Start in dryrun mode to audit without blocking
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet", "ReplicaSet"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+  parameters:
+    exemptImages:
+      # AWS system images that may not follow standard tagging
+      - "602401143452.dkr.ecr.*.amazonaws.com/*"

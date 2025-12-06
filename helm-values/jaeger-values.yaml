@@ -34,6 +34,39 @@ allInOne:
   service:
     type: ClusterIP
 
+  # Pod security context (OPA compliant)
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+
+  # Container security context (OPA compliant)
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # Jaeger needs to write temp files
+    runAsNonRoot: true
+    runAsUser: 10001
+    capabilities:
+      drop:
+        - ALL
+
+  # Liveness and readiness probes (OPA compliant)
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 14269
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 14269
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
+
 # Disable separate components when using all-in-one
 collector:
   enabled: false
@@ -61,3 +94,10 @@ storage:
 
 # OTLP receiver enabled by default in recent Jaeger versions
 # LiteLLM will send traces via OTLP to port 4317 (gRPC) or 4318 (HTTP)
+
+# Standard Kubernetes labels (OPA compliant)
+labels:
+  app.kubernetes.io/name: jaeger
+  app.kubernetes.io/version: "1.76.0"
+  app.kubernetes.io/component: tracing
+  app.kubernetes.io/part-of: litellm-stack

@@ -1,0 +1,102 @@
+# OPA Gatekeeper Helm Chart Values
+# Helm chart: https://open-policy-agent.github.io/gatekeeper/charts
+# Chart version: 3.18.0 (latest stable as of 2025)
+
+# Replica count for high availability
+replicas: 3
+
+# Audit configuration
+auditInterval: 60  # Audit existing resources every 60 seconds
+auditMatchKindOnly: true  # Only audit kinds specified in constraints
+auditFromCache: true  # Use OPA cache for audit (faster)
+constraintViolationsLimit: 20  # Max violations to report per constraint
+
+# Emit events for audit violations
+emitAuditEvents: true
+emitAdmissionEvents: true
+
+# Webhook configuration
+validatingWebhookTimeoutSeconds: 10
+mutatingWebhookTimeoutSeconds: 5
+
+# Enable mutation support (for adding default labels, etc.)
+enableMutation: true
+
+# Resource limits for gatekeeper-controller-manager
+controllerManager:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+  # Pod security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+
+  # Affinity for spreading across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: control-plane
+                  operator: In
+                  values:
+                    - controller-manager
+            topologyKey: kubernetes.io/hostname
+
+# Resource limits for gatekeeper-audit
+audit:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+
+# Exempt namespaces from policy enforcement
+# Critical system namespaces should be exempt to prevent cluster breakage
+exemptNamespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - gatekeeper-system
+
+# Exempt specific namespaces from audit only (still enforce on admission)
+exemptNamespacesAudit: []
+
+# Pod disruption budget
+pdb:
+  controllerManager:
+    minAvailable: 1
+
+# Enable external data for future extensions
+enableExternalData: false
+
+# Logging configuration
+logLevel: INFO
+logDenies: true  # Log all denied admission requests
+
+# Metrics for Prometheus
+metricsBackend: prometheus

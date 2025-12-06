@@ -1,0 +1,62 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sallowedrepos
+  annotations:
+    description: >-
+      Requires container images to come from approved registries.
+      Prevents pulling images from untrusted sources.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAllowedRepos
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            repos:
+              description: List of allowed container image registries
+              type: array
+              items:
+                type: string
+            exemptImages:
+              description: List of images to exempt from this policy (supports glob patterns)
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sallowedrepos
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          not image_allowed(container.image)
+          msg := sprintf("Container '%v' has image '%v' which is not from an allowed registry. Allowed registries: %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not is_exempt(container.image)
+          not image_allowed(container.image)
+          msg := sprintf("Init container '%v' has image '%v' which is not from an allowed registry. Allowed registries: %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not is_exempt(container.image)
+          not image_allowed(container.image)
+          msg := sprintf("Ephemeral container '%v' has image '%v' which is not from an allowed registry. Allowed registries: %v", [container.name, container.image, input.parameters.repos])
+        }
+
+        image_allowed(image) {
+          repo := input.parameters.repos[_]
+          startswith(image, repo)
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }
