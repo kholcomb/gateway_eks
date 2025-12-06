@@ -52,7 +52,15 @@ This directory contains all configuration files and scripts to deploy a complete
 ## Directory Structure
 
 ```
-k8s-deploy/
+eks-deploy/
+├── eksctl/                          # eksctl configuration
+│   ├── cluster.yaml                 # EKS cluster definition
+│   └── README.md                    # eksctl deployment guide
+├── terraform/                       # Terraform infrastructure
+│   ├── main.tf                      # Main Terraform config
+│   ├── modules/                     # Terraform modules
+│   ├── terraform.tfvars.example     # Example configuration
+│   └── README.md                    # Terraform deployment guide
 ├── helm-values/
 │   ├── litellm-values.yaml          # LiteLLM configuration (+ OpenTelemetry)
 │   ├── openwebui-values.yaml        # OpenWebUI configuration
@@ -72,70 +80,108 @@ k8s-deploy/
 │   ├── external-secrets-policy.json # Secrets Manager policy
 │   └── trust-policy-template.json   # IRSA trust policy template
 ├── scripts/
-│   ├── deploy.sh                    # Main deployment script
-│   └── setup-bastion.sh             # Bastion EC2 setup
-└── README.md
+│   ├── deploy.sh                    # Main deployment script (Terraform/eksctl + apps)
+│   ├── setup-bastion.sh             # Bastion EC2 setup
+│   └── README.md                    # Deployment scripts guide
+├── DEPLOYMENT_OPTIONS.md            # Terraform vs eksctl comparison
+└── README.md                        # This file
 ```
 
 ## Prerequisites
 
-1. **EKS Cluster** with OIDC provider enabled
-2. **Amazon RDS PostgreSQL** instance in the EKS VPC
-3. **AWS CLI v2**, **kubectl**, **helm**, and **eksctl** installed
-4. **gp3 StorageClass** available in your cluster
+1. **AWS Account** with appropriate permissions
+2. **AWS CLI v2** installed and configured
+3. **kubectl** installed (v1.28+)
+4. **helm** installed (v3.0+)
+5. **One of the following** for infrastructure deployment:
+   - **Terraform** (v1.5+) for full infrastructure deployment
+   - **eksctl** (latest) for EKS cluster-only deployment
 
 ## Quick Start
 
-### 1. Configure Environment Variables
+### Option 1: Interactive Deployment (Recommended)
+
+The deployment script will guide you through choosing between Terraform and eksctl:
 
 ```bash
-export AWS_REGION=us-east-1
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export EKS_CLUSTER_NAME=my-eks-cluster
+cd scripts
+./deploy.sh infrastructure
 ```
 
-### 2. Update Configuration Files
+You'll be prompted to choose:
+- **[T] Terraform** - Full infrastructure (VPC, EKS, RDS, Secrets Manager)
+- **[E] eksctl** - Faster cluster-only deployment (VPC, EKS, node groups)
 
-Edit the following files and replace placeholder values:
-
-- `helm-values/litellm-values.yaml` - Set `ACCOUNT_ID` in IRSA annotation
-- `helm-values/external-secrets-values.yaml` - Set `ACCOUNT_ID` in IRSA annotation
-- `manifests/cluster-secret-store.yaml` - Set your AWS region
-
-### 3. Create RDS PostgreSQL Database
-
-Create an RDS instance in the EKS VPC and store the connection string:
+### Option 2: Deploy with eksctl (Faster)
 
 ```bash
+# 1. Set environment variables
+export AWS_REGION=us-east-1
+export EKS_CLUSTER_NAME=litellm-eks
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# 2. Deploy EKS cluster using eksctl
+cd scripts
+./deploy.sh eksctl
+
+# 3. Create database secret (eksctl doesn't create RDS)
 aws secretsmanager create-secret \
   --name litellm/database-url \
-  --secret-string 'postgresql://litellm:password@your-rds-endpoint:5432/litellm' \
+  --secret-string 'postgresql://user:password@your-db-host:5432/litellm' \
   --region $AWS_REGION
+
+# 4. Deploy applications
+./deploy.sh all
 ```
 
-### 4. Run the Deployment Script
+**Time:** ~20 minutes total
+**Best for:** Development, testing, quick setup
+
+### Option 3: Deploy with Terraform (Full Infrastructure)
 
 ```bash
-# Make scripts executable
-chmod +x scripts/*.sh
+# 1. Set environment variables
+export AWS_REGION=us-east-1
+export EKS_CLUSTER_NAME=litellm-eks
 
-# Run full deployment
-./scripts/deploy.sh all
+# 2. Configure Terraform
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
 
-# Or run individual steps:
-./scripts/deploy.sh validate          # Validate all YAML files (syntax + K8s spec)
-./scripts/deploy.sh irsa              # Create IRSA roles
-./scripts/deploy.sh secrets           # Create AWS secrets
-./scripts/deploy.sh helm-repos        # Add Helm repos
-./scripts/deploy.sh namespaces        # Create namespaces
-./scripts/deploy.sh external-secrets  # Deploy ESO + create secret stores
-./scripts/deploy.sh monitoring        # Deploy Prometheus/Grafana + dashboards
-./scripts/deploy.sh jaeger            # Deploy Jaeger for distributed tracing
-./scripts/deploy.sh redis             # Deploy Redis
-./scripts/deploy.sh litellm           # Deploy LiteLLM
-./scripts/deploy.sh openwebui         # Deploy OpenWebUI
-./scripts/deploy.sh verify            # Verify deployment
+# 3. Deploy full infrastructure
+cd ../scripts
+./deploy.sh terraform
+
+# 4. Deploy applications
+./deploy.sh all
 ```
+
+**Time:** ~35 minutes total
+**Best for:** Production deployments, complete infrastructure control
+
+### Option 4: Complete End-to-End (Terraform)
+
+```bash
+cd scripts
+./deploy.sh complete
+```
+
+This deploys everything: infrastructure + applications in one command.
+
+## Deployment Comparison
+
+| Feature | eksctl | Terraform |
+|---------|--------|-----------|
+| **Setup Time** | 15-20 min | 25-35 min |
+| **Configuration** | Simple YAML | Multiple .tf files |
+| **VPC & Networking** | ✅ Auto-created | ✅ Custom config |
+| **EKS Cluster** | ✅ Full support | ✅ Full support |
+| **RDS Database** | ❌ Bring your own | ✅ Included |
+| **Secrets Manager** | ⚠️ Manual setup | ✅ Automated |
+| **Best For** | Dev/Testing | Production |
+
+See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed comparison.
 
 ### 5. Set Up Bastion for Testing
 
@@ -457,6 +503,42 @@ kubectl describe pod -l app.kubernetes.io/name=litellm -n litellm
 
 ```bash
 kubectl get sa litellm-sa -n litellm -o yaml
+```
+
+## Documentation
+
+- **[DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md)** - Detailed comparison of Terraform vs eksctl
+- **[scripts/README.md](scripts/README.md)** - Deployment script documentation
+- **[eksctl/README.md](eksctl/README.md)** - eksctl configuration guide
+- **[terraform/README.md](terraform/README.md)** - Terraform configuration guide
+
+## Common Workflows
+
+### Development/Testing Setup
+```bash
+# Use eksctl for faster setup
+./scripts/deploy.sh eksctl
+./scripts/deploy.sh all
+```
+
+### Production Setup
+```bash
+# Use Terraform for complete infrastructure
+./scripts/deploy.sh terraform
+./scripts/deploy.sh all
+```
+
+### Update Applications Only
+```bash
+# Update specific components
+./scripts/deploy.sh litellm
+./scripts/deploy.sh openwebui
+```
+
+### Complete Teardown
+```bash
+# Destroy everything (auto-detects Terraform or eksctl)
+./scripts/deploy.sh infrastructure-destroy
 ```
 
 ## Future Enhancements
