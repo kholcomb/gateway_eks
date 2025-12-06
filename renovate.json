@@ -8,95 +8,154 @@
     ":semanticCommits",
     ":automergePatch"
   ],
-  "baseBranches": ["dev"],
+  "baseBranchPatterns": [
+    "dev"
+  ],
   "timezone": "America/New_York",
-  "schedule": ["after 9am and before 5pm on monday"],
+  "schedule": [
+    "after 9am and before 5pm on monday"
+  ],
   "prHourlyLimit": 5,
   "prConcurrentLimit": 10,
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
   "minimumReleaseAge": "3 days",
   "packageRules": [
     {
       "description": "Group GitHub Actions updates",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github-actions",
       "commitMessageTopic": "GitHub Actions",
-      "addLabels": ["github-actions"],
+      "addLabels": [
+        "github-actions"
+      ],
       "semanticCommitType": "ci"
     },
     {
       "description": "Group Helm chart updates",
-      "matchManagers": ["helmv3", "helm-values"],
+      "matchManagers": [
+        "helmv3",
+        "helm-values"
+      ],
       "groupName": "helm-charts",
       "commitMessageTopic": "Helm charts",
-      "addLabels": ["helm"],
+      "addLabels": [
+        "helm"
+      ],
       "semanticCommitType": "chore"
     },
     {
       "description": "Group Docker image updates",
-      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
       "groupName": "docker-images",
       "commitMessageTopic": "Docker images",
-      "addLabels": ["docker"],
+      "addLabels": [
+        "docker"
+      ],
       "semanticCommitType": "chore"
     },
     {
       "description": "Group Terraform provider updates",
-      "matchManagers": ["terraform"],
+      "matchManagers": [
+        "terraform"
+      ],
       "groupName": "terraform-providers",
       "commitMessageTopic": "Terraform providers",
-      "addLabels": ["terraform"],
+      "addLabels": [
+        "terraform"
+      ],
       "semanticCommitType": "infra"
     },
     {
       "description": "AWS Terraform providers",
-      "matchManagers": ["terraform"],
-      "matchPackagePatterns": ["^hashicorp/aws", "^aws/"],
-      "groupName": "terraform-aws"
+      "matchManagers": [
+        "terraform"
+      ],
+      "groupName": "terraform-aws",
+      "matchPackageNames": [
+        "/^hashicorp/aws/",
+        "/^aws//"
+      ]
     },
     {
       "description": "Kubernetes Terraform providers",
-      "matchManagers": ["terraform"],
-      "matchPackagePatterns": ["^hashicorp/kubernetes", "^hashicorp/helm"],
-      "groupName": "terraform-kubernetes"
+      "matchManagers": [
+        "terraform"
+      ],
+      "groupName": "terraform-kubernetes",
+      "matchPackageNames": [
+        "/^hashicorp/kubernetes/",
+        "/^hashicorp/helm/"
+      ]
     },
     {
       "description": "Be conservative with major version updates",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "minimumReleaseAge": "14 days",
       "automerge": false,
-      "addLabels": ["major-update"]
+      "addLabels": [
+        "major-update"
+      ]
     },
     {
       "description": "Observability stack (Prometheus, Grafana, Jaeger)",
-      "matchPackagePatterns": ["prometheus", "grafana", "jaeger"],
       "groupName": "observability-stack",
-      "addLabels": ["observability"]
+      "addLabels": [
+        "observability"
+      ],
+      "matchPackageNames": [
+        "/prometheus/",
+        "/grafana/",
+        "/jaeger/"
+      ]
     },
     {
       "description": "LiteLLM updates",
-      "matchPackagePatterns": ["litellm", "berriai"],
       "groupName": "litellm",
-      "addLabels": ["litellm"]
+      "addLabels": [
+        "litellm"
+      ],
+      "matchPackageNames": [
+        "/litellm/",
+        "/berriai/"
+      ]
     },
     {
       "description": "External Secrets Operator",
-      "matchPackagePatterns": ["external-secrets"],
       "groupName": "external-secrets",
-      "addLabels": ["secrets"]
+      "addLabels": [
+        "secrets"
+      ],
+      "matchPackageNames": [
+        "/external-secrets/"
+      ]
     },
     {
       "description": "Redis updates",
-      "matchPackagePatterns": ["redis"],
       "groupName": "redis",
-      "addLabels": ["redis"]
+      "addLabels": [
+        "redis"
+      ],
+      "matchPackageNames": [
+        "/redis/"
+      ]
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Image versions in Helm values files",
-      "fileMatch": ["helm-values/.*\\.yaml$"],
+      "managerFilePatterns": [
+        "/helm-values/.*\\.yaml$/"
+      ],
       "matchStrings": [
         "image:\\s*['\"]?(?<depName>[^:@\\s'\"]+):(?<currentValue>[^\\s'\"]+)['\"]?"
       ],
@@ -104,10 +163,14 @@
     }
   ],
   "helm-values": {
-    "fileMatch": ["helm-values/.*\\.yaml$"]
+    "managerFilePatterns": [
+      "/helm-values/.*\\.yaml$/"
+    ]
   },
   "vulnerabilityAlerts": {
-    "labels": ["security"],
+    "labels": [
+      "security"
+    ],
     "automerge": false
   }
 }
