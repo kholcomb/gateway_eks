@@ -95,6 +95,26 @@ terraform output configure_kubectl
 aws eks update-kubeconfig --name litellm-eks --region us-east-1
 ```
 
+### 4.5. Configure Storage Class (One-Time Setup)
+
+**Important**: EKS creates a default `gp2` storage class. If you enabled `gp3_as_default = true` in your configuration, you need to remove the default annotation from the gp2 class to avoid conflicts.
+
+```bash
+# Check current default storage class
+kubectl get storageclass
+
+# Remove default annotation from gp2 (if it exists)
+kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+
+# Verify gp3 is now the default
+kubectl get storageclass
+# NAME   PROVISIONER       RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+# gp2    kubernetes.io...  Delete          WaitForFirstConsumer   false                  10m
+# gp3    ebs.csi.aws.com   Delete          WaitForFirstConsumer   true                   5m   (default)
+```
+
+**Note**: This only needs to be done once after cluster creation. If you set `gp3_as_default = false`, skip this step.
+
 ### 5. Deploy Applications
 
 After infrastructure is provisioned, run the Kubernetes deployment:
@@ -106,6 +126,82 @@ eval "$(terraform output -raw deploy_script_env_vars)"
 # Run the deployment script
 ../scripts/deploy.sh all
 ```
+
+## Important: Database Connection Setup
+
+**Critical Note**: The Terraform infrastructure creates the database with an **AWS-managed password** stored in Secrets Manager. This is a security best practice, but it requires special handling in your External Secrets configuration.
+
+### How Database Credentials Work
+
+1. **RDS Password**: AWS automatically generates and manages the master password in Secrets Manager
+   - ARN available at: `terraform output rds_master_user_secret_arn`
+   - Secret format: `{"password": "generated-password"}`
+
+2. **Database URL Secret**: Terraform creates a separate secret with the connection template
+   - ARN available at: `terraform output secrets_database_url_arn`
+   - Format: `postgresql://litellm@hostname:5432/litellm` (no password)
+
+### External Secrets Configuration
+
+Your External Secrets `SecretStore` and `ExternalSecret` must **merge** these two secrets:
+
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: litellm-db-secret
+  namespace: litellm
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: SecretStore
+  target:
+    name: litellm-database
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        # Construct full database URL with password from RDS secret
+        DATABASE_URL: |
+          postgresql://{{ .username }}:{{ .password | urlquery }}@{{ .endpoint }}/{{ .database }}
+  dataFrom:
+    - extract:
+        key: <RDS_SECRET_ARN>  # Get from terraform output
+      rewrite:
+        - regexp:
+            source: "password"
+            target: "password"
+    - extract:
+        key: <DB_URL_SECRET_ARN>  # Get from terraform output (contains endpoint, username, database)
+```
+
+**Alternative Approach**: Use the RDS endpoint directly in your ExternalSecret template:
+
+```yaml
+data:
+  DATABASE_URL: "postgresql://litellm:{{ .password | urlquery }}@{{ .endpoint }}/litellm"
+dataFrom:
+  - extract:
+      key: arn:aws:secretsmanager:region:account:secret:rds!cluster-xxx
+    rewrite:
+      - regexp:
+          source: "password"
+          target: "password"
+      - regexp:
+          source: "host"
+          target: "endpoint"
+```
+
+**Getting the ARNs**:
+```bash
+# After terraform apply, get the secret ARNs:
+terraform output rds_master_user_secret_arn
+terraform output secrets_database_url_arn
+terraform output rds_endpoint  # hostname:port
+```
+
+**Note**: The deployment script (`../scripts/deploy.sh`) should already handle this configuration. Check the External Secrets manifests in `../k8s/` to verify.
 
 ## Configuration
 
@@ -150,6 +246,82 @@ bedrock_model_arns = [
   # Add more models as needed
 ]
 ```
+
+### VPC Subnet Configuration
+
+The VPC module creates three types of subnets across multiple availability zones:
+
+#### Default Subnet Layout (with 10.0.0.0/16 VPC and 3 AZs)
+
+| Subnet Type | AZ | CIDR Block | IPs Available | Purpose |
+|-------------|----|-----------:|-------------:|---------|
+| Public      | 1  | 10.0.0.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Public      | 2  | 10.0.16.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Public      | 3  | 10.0.32.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Private     | 1  | 10.0.48.0/20 | 4,091 | EKS worker nodes, pods |
+| Private     | 2  | 10.0.64.0/20 | 4,091 | EKS worker nodes, pods |
+| Private     | 3  | 10.0.80.0/20 | 4,091 | EKS worker nodes, pods |
+| Database    | 1  | 10.0.96.0/20 | 4,091 | RDS instances |
+| Database    | 2  | 10.0.112.0/20 | 4,091 | RDS instances |
+| Database    | 3  | 10.0.128.0/20 | 4,091 | RDS instances |
+
+**Total subnets**: 9 (3 AZs × 3 types)
+**Address space used**: 10.0.0.0 - 10.0.143.255 (36,864 IPs)
+**Address space available**: 10.0.144.0 - 10.0.255.255 (28,672 IPs for future expansion)
+
+#### Customizing Subnet Sizes
+
+The subnet sizing is configurable via the `*_subnet_newbits` variables in the VPC module. The default is 4, which creates /20 subnets from a /16 VPC.
+
+**Example: Larger subnets for more pods**
+
+If you need more IPs per subnet (e.g., for large EKS clusters with many pods):
+
+```hcl
+# In your root main.tf or terraform.tfvars
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc_cidr                = "10.0.0.0/16"
+  public_subnet_newbits   = 6   # /22 subnets (1,019 IPs)
+  private_subnet_newbits  = 3   # /19 subnets (8,187 IPs) - more room for pods
+  database_subnet_newbits = 6   # /22 subnets (1,019 IPs)
+
+  # ... other variables
+}
+```
+
+**Example: Smaller subnets for resource efficiency**
+
+For smaller deployments:
+
+```hcl
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc_cidr                = "10.0.0.0/16"
+  public_subnet_newbits   = 8   # /24 subnets (251 IPs)
+  private_subnet_newbits  = 6   # /22 subnets (1,019 IPs)
+  database_subnet_newbits = 8   # /24 subnets (251 IPs)
+
+  # ... other variables
+}
+```
+
+**Important Considerations**:
+- **EKS IP requirements**: Each pod gets an IP from the VPC. Plan accordingly.
+- **Secondary CIDR blocks**: EKS supports secondary CIDR blocks if you run out of IPs.
+- **Subnet expansion**: Subnets cannot be resized after creation. Plan for growth.
+
+#### IP Address Planning
+
+For a production EKS cluster with 100 nodes and 30 pods per node:
+- **Nodes**: 100 IPs
+- **Pods**: 3,000 IPs
+- **Headroom**: ~1,000 IPs for autoscaling
+- **Total needed**: ~4,100 IPs → Use /20 subnets (4,096 IPs) or larger
+
+**Recommendation**: Use /19 or /18 subnets for private subnets if you plan to run large workloads.
 
 ## Testing with the Bastion
 

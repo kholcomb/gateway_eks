@@ -39,12 +39,13 @@ resource "aws_internet_gateway" "main" {
 
 # -----------------------------------------------------------------------------
 # Public Subnets
+# Default: /16 VPC → /20 subnets (4,096 IPs each)
 # -----------------------------------------------------------------------------
 resource "aws_subnet" "public" {
   count = var.az_count
 
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet(var.vpc_cidr, 4, count.index)
+  cidr_block              = cidrsubnet(var.vpc_cidr, var.public_subnet_newbits, count.index)
   availability_zone       = local.azs[count.index]
   map_public_ip_on_launch = true
 
@@ -57,12 +58,13 @@ resource "aws_subnet" "public" {
 
 # -----------------------------------------------------------------------------
 # Private Subnets
+# Default: /16 VPC → /20 subnets (4,096 IPs each)
 # -----------------------------------------------------------------------------
 resource "aws_subnet" "private" {
   count = var.az_count
 
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index + var.az_count)
+  cidr_block        = cidrsubnet(var.vpc_cidr, var.private_subnet_newbits, count.index + var.az_count)
   availability_zone = local.azs[count.index]
 
   tags = merge(var.tags, {
@@ -74,12 +76,13 @@ resource "aws_subnet" "private" {
 
 # -----------------------------------------------------------------------------
 # Database Subnets (isolated, no internet access)
+# Default: /16 VPC → /20 subnets (4,096 IPs each)
 # -----------------------------------------------------------------------------
 resource "aws_subnet" "database" {
   count = var.az_count
 
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index + (var.az_count * 2))
+  cidr_block        = cidrsubnet(var.vpc_cidr, var.database_subnet_newbits, count.index + (var.az_count * 2))
   availability_zone = local.azs[count.index]
 
   tags = merge(var.tags, {
@@ -250,16 +253,23 @@ resource "aws_iam_role_policy" "flow_logs" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams"
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "${aws_cloudwatch_log_group.flow_logs[0].arn}:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "arn:aws:logs:*:*:log-group:*"
+      }
+    ]
   })
 }
