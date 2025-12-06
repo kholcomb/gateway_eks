@@ -6,93 +6,150 @@
     ":dependencyDashboard"
   ],
   "description": "Renovate configuration for LiteLLM EKS deployment",
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
   "assigneesFromCodeOwners": true,
   "reviewersFromCodeOwners": true,
   "packageRules": [
     {
       "description": "Terraform provider updates",
-      "matchDatasources": ["terraform-provider"],
-      "matchPackagePatterns": ["*"],
+      "matchDatasources": [
+        "terraform-provider"
+      ],
       "groupName": "Terraform providers",
-      "schedule": ["before 6am on monday"],
+      "schedule": [
+        "before 6am on monday"
+      ],
       "automerge": false,
       "rangeStrategy": "update-lockfile",
-      "separateMinorPatch": true
+      "separateMinorPatch": true,
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
       "description": "Terraform module updates",
-      "matchDatasources": ["terraform-module"],
-      "matchPackagePatterns": ["*"],
+      "matchDatasources": [
+        "terraform-module"
+      ],
       "groupName": "Terraform modules",
-      "schedule": ["before 6am on monday"],
+      "schedule": [
+        "before 6am on monday"
+      ],
       "automerge": false,
-      "separateMinorPatch": true
+      "separateMinorPatch": true,
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
       "description": "Docker image updates - critical security",
-      "matchDatasources": ["docker"],
-      "matchUpdateTypes": ["major", "minor", "patch"],
-      "labels": ["dependencies", "docker"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "labels": [
+        "dependencies",
+        "docker"
+      ],
       "automerge": false,
       "groupName": "Docker images",
-      "schedule": ["before 6am on monday"]
+      "schedule": [
+        "before 6am on monday"
+      ]
     },
     {
       "description": "Helm chart updates",
-      "matchDatasources": ["helm"],
-      "matchPackagePatterns": ["*"],
+      "matchDatasources": [
+        "helm"
+      ],
       "groupName": "Helm charts",
-      "schedule": ["before 6am on monday"],
+      "schedule": [
+        "before 6am on monday"
+      ],
       "automerge": false,
-      "separateMinorPatch": true
+      "separateMinorPatch": true,
+      "matchPackageNames": [
+        "*"
+      ]
     },
     {
       "description": "GitHub Actions updates",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "GitHub Actions",
       "automerge": true,
       "automergeType": "pr",
-      "schedule": ["before 6am on monday"],
+      "schedule": [
+        "before 6am on monday"
+      ],
       "pinDigests": true
     },
     {
       "description": "Kubernetes version - major updates require manual review",
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["eks", "kubernetes"],
-      "matchUpdateTypes": ["major"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "eks",
+        "kubernetes"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "enabled": true,
       "automerge": false,
-      "labels": ["dependencies", "kubernetes", "breaking-change"],
+      "labels": [
+        "dependencies",
+        "kubernetes",
+        "breaking-change"
+      ],
       "prPriority": 10
     },
     {
       "description": "Pin AWS Terraform providers to avoid breaking changes",
-      "matchDatasources": ["terraform-provider"],
-      "matchPackageNames": ["hashicorp/aws"],
+      "matchDatasources": [
+        "terraform-provider"
+      ],
+      "matchPackageNames": [
+        "hashicorp/aws"
+      ],
       "rangeStrategy": "pin",
       "automerge": false
     },
     {
       "description": "Security patches - auto-merge with tests",
-      "matchUpdateTypes": ["patch"],
-      "matchPackagePatterns": ["*"],
+      "matchUpdateTypes": [
+        "patch"
+      ],
       "automerge": true,
       "automergeType": "pr",
-      "labels": ["dependencies", "security-patch"]
+      "labels": [
+        "dependencies",
+        "security-patch"
+      ],
+      "matchPackageNames": [
+        "*"
+      ]
     }
   ],
   "terraform": {
-    "fileMatch": [
-      "\\.tf$",
-      "(^|/)terraform\\.tfvars$",
-      "(^|/)\\.?terraform\\.tfvars\\.json$"
+    "managerFilePatterns": [
+      "/\\.tf$/",
+      "/(^|/)terraform\\.tfvars$/",
+      "/(^|/)\\.?terraform\\.tfvars\\.json$/"
     ]
   },
   "dockerfile": {
-    "fileMatch": [
-      "(^|/|\\.)Dockerfile$",
-      "(^|/)Dockerfile\\.[^/]*$"
+    "managerFilePatterns": [
+      "/(^|/|\\.)Dockerfile$/",
+      "/(^|/)Dockerfile\\.[^/]*$/"
     ]
   },
   "helm-values": {
@@ -101,8 +158,8 @@
     ]
   },
   "kubernetes": {
-    "fileMatch": [
-      "\\.ya?ml$"
+    "managerFilePatterns": [
+      "/\\.ya?ml$/"
     ]
   },
   "ignorePaths": [
@@ -118,8 +175,13 @@
   "commitMessagePrefix": "chore(deps):",
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security", "dependencies"],
-    "assignees": ["@renovate-bot"],
+    "labels": [
+      "security",
+      "dependencies"
+    ],
+    "assignees": [
+      "@renovate-bot"
+    ],
     "automerge": false
   },
   "separateMajorMinor": true,
