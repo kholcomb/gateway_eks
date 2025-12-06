@@ -6,10 +6,24 @@ This directory contains deployment scripts for deploying LiteLLM + OpenWebUI on 
 
 The deployment process is split into two phases:
 
-1. **Infrastructure Provisioning** (Terraform) - Creates AWS infrastructure (VPC, EKS, RDS, etc.)
+1. **Infrastructure Provisioning** - Creates AWS infrastructure
+   - **Option A: Terraform** - Full infrastructure (VPC, EKS, RDS, Secrets Manager, etc.)
+   - **Option B: eksctl** - EKS cluster only (VPC, EKS, node groups)
 2. **Application Deployment** (Kubernetes) - Deploys applications to the EKS cluster
 
 ## Quick Start
+
+### Interactive Deployment (Recommended)
+
+Choose between Terraform or eksctl interactively:
+
+```bash
+./deploy.sh infrastructure
+```
+
+You'll be prompted to choose:
+- **[T] Terraform** - Full infrastructure with RDS database
+- **[E] eksctl** - Faster cluster-only deployment
 
 ### Complete Deployment (From Scratch)
 
@@ -24,20 +38,42 @@ This will:
 2. Configure kubectl to connect to the new cluster
 3. Deploy all applications (LiteLLM, OpenWebUI, Redis, monitoring)
 
-### Step-by-Step Deployment
+### Deployment Options
 
-If you prefer more control:
+#### Option A: Deploy with eksctl (Faster, Cluster-Focused)
 
 ```bash
-# 1. Deploy infrastructure
-./deploy.sh infrastructure
+# 1. Deploy EKS cluster using eksctl
+./deploy.sh eksctl
 
-# 2. Configure kubectl (command will be shown in output)
+# 2. Create database secret (eksctl doesn't create RDS)
+aws secretsmanager create-secret \
+  --name litellm/database-url \
+  --secret-string "postgresql://user:pass@your-db:5432/litellm" \
+  --region us-east-1
+
+# 3. Deploy applications
+./deploy.sh all
+```
+
+**Pros:** Faster (15-20 min), simpler configuration, cluster-focused
+**Cons:** No RDS database, requires external database setup
+
+#### Option B: Deploy with Terraform (Full Infrastructure)
+
+```bash
+# 1. Deploy full infrastructure
+./deploy.sh terraform
+
+# 2. Configure kubectl (command shown in output)
 aws eks update-kubeconfig --name litellm-eks --region us-east-1
 
 # 3. Deploy applications
 ./deploy.sh all
 ```
+
+**Pros:** Complete infrastructure, includes RDS, production-ready
+**Cons:** More complex, requires terraform.tfvars setup
 
 ## Scripts
 
@@ -49,10 +85,14 @@ Main deployment script that handles both infrastructure provisioning and applica
 
 | Command | Description |
 |---------|-------------|
-| `infrastructure`, `infra` | Deploy AWS infrastructure using Terraform |
-| `infrastructure-plan`, `infra-plan` | Show what infrastructure changes would be made |
+| `infrastructure`, `infra` | **Interactive** - Choose between Terraform or eksctl |
+| `infrastructure-terraform`, `terraform` | Deploy using Terraform (full infrastructure) |
+| `infrastructure-eksctl`, `eksctl` | Deploy using eksctl (EKS cluster only) |
+| `infrastructure-plan`, `infra-plan` | Show Terraform infrastructure changes (Terraform only) |
 | `infrastructure-verify`, `infra-verify` | Verify infrastructure components exist |
-| `infrastructure-destroy` | **⚠️ DANGER:** Destroy all infrastructure |
+| `infrastructure-destroy` | Auto-detect and destroy infrastructure (Terraform or eksctl) |
+| `infrastructure-destroy-terraform` | Destroy Terraform-managed infrastructure |
+| `infrastructure-destroy-eksctl` | Destroy eksctl-managed cluster |
 | `complete`, `full` | Deploy infrastructure + configure kubectl + deploy apps |
 
 #### Application Commands
@@ -81,19 +121,25 @@ Main deployment script that handles both infrastructure provisioning and applica
 #### Examples
 
 ```bash
+# Interactive deployment - choose Terraform or eksctl
+./deploy.sh infrastructure
+
+# Deploy using eksctl (faster, cluster-only)
+./deploy.sh eksctl
+
+# Deploy using Terraform (full infrastructure)
+./deploy.sh terraform
+
 # Complete deployment from scratch
 ./deploy.sh complete
 
-# Verify infrastructure exists before deploying applications
+# Verify infrastructure exists
 ./deploy.sh infrastructure-verify
 
 # List all available components
 ./deploy.sh list
 
-# Deploy infrastructure only
-./deploy.sh infrastructure
-
-# Preview infrastructure changes
+# Preview Terraform infrastructure changes
 ./deploy.sh infrastructure-plan
 
 # Deploy applications to existing cluster
@@ -107,6 +153,9 @@ Main deployment script that handles both infrastructure provisioning and applica
 # Deploy only monitoring stack
 ./deploy.sh monitoring
 ./deploy.sh jaeger
+
+# Destroy infrastructure (auto-detects method)
+./deploy.sh infrastructure-destroy
 
 # Non-interactive deployment
 INTERACTIVE_MODE=false ./deploy.sh all
