@@ -1,0 +1,113 @@
+# LiteLLM EKS Infrastructure - Example Configuration
+# Copy this file to terraform.tfvars and modify as needed
+# terraform.tfvars is gitignored and contains your actual values
+
+# -----------------------------------------------------------------------------
+# General Configuration
+# -----------------------------------------------------------------------------
+aws_region   = "us-east-1"
+project_name = "litellm"
+environment  = "dev"
+
+# -----------------------------------------------------------------------------
+# VPC Configuration
+# -----------------------------------------------------------------------------
+vpc_cidr             = "10.0.0.0/16"
+az_count             = 3
+single_nat_gateway   = true  # Set to true for cost savings in non-prod
+enable_vpc_flow_logs = true
+
+# -----------------------------------------------------------------------------
+# EKS Configuration
+# -----------------------------------------------------------------------------
+eks_cluster_name    = "litellm-eks"
+eks_cluster_version = "1.31"
+eks_public_access   = true
+
+# Restrict API access to specific CIDRs for security
+# eks_public_access_cidrs = ["your.ip.address/32"]
+
+eks_cluster_log_types  = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+eks_log_retention_days = 30
+
+# Node group configuration - adjust based on expected load
+eks_node_groups = {
+  default = {
+    instance_types = ["m6i.large", "m5.large"]
+    capacity_type  = "ON_DEMAND"
+    disk_size      = 100
+    desired_size   = 3
+    min_size       = 2
+    max_size       = 6
+    labels         = {}
+    taints         = []
+  }
+  # Uncomment for a dedicated monitoring node group
+  # monitoring = {
+  #   instance_types = ["m6i.xlarge"]
+  #   capacity_type  = "ON_DEMAND"
+  #   disk_size      = 200
+  #   desired_size   = 1
+  #   min_size       = 1
+  #   max_size       = 2
+  #   labels = {
+  #     "workload" = "monitoring"
+  #   }
+  #   taints = []
+  # }
+}
+
+# -----------------------------------------------------------------------------
+# RDS Configuration
+# -----------------------------------------------------------------------------
+rds_engine_version               = "16.4"
+rds_instance_class               = "db.t3.medium"  # Use db.r6g.large for production
+rds_allocated_storage            = 20
+rds_max_allocated_storage        = 100
+rds_database_name                = "litellm"
+rds_master_username              = "litellm"
+rds_multi_az                     = true
+rds_backup_retention_period      = 7
+rds_deletion_protection          = true
+rds_skip_final_snapshot          = false
+rds_performance_insights_enabled = true
+create_rds_cloudwatch_alarms     = true
+
+# -----------------------------------------------------------------------------
+# Secrets Configuration
+# -----------------------------------------------------------------------------
+secrets_prefix = "litellm"
+
+# -----------------------------------------------------------------------------
+# IAM / IRSA Configuration
+# -----------------------------------------------------------------------------
+litellm_namespace                = "litellm"
+litellm_service_account          = "litellm-sa"
+external_secrets_namespace       = "external-secrets"
+external_secrets_service_account = "external-secrets"
+
+# Bedrock models to allow - add/remove based on your needs
+bedrock_model_arns = [
+  "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0",
+  "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+  "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+  "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-opus-20240229-v1:0",
+  "arn:aws:bedrock:*::foundation-model/meta.llama3-1-70b-instruct-v1:0",
+  "arn:aws:bedrock:*::foundation-model/meta.llama3-1-8b-instruct-v1:0",
+  "arn:aws:bedrock:*::foundation-model/mistral.mistral-large-2402-v1:0",
+]
+
+# -----------------------------------------------------------------------------
+# Optional Controllers
+# -----------------------------------------------------------------------------
+enable_cluster_autoscaler           = false
+enable_aws_load_balancer_controller = false
+
+# -----------------------------------------------------------------------------
+# Bastion Configuration (for testing without public exposure)
+# -----------------------------------------------------------------------------
+# The bastion allows testing OpenWebUI and other services via port-forwarding
+# without exposing them to the internet. Connect via SSM Session Manager.
+create_bastion        = true
+bastion_instance_type = "t3.medium"
