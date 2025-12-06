@@ -1,0 +1,31 @@
+# CODEOWNERS - Defines code owners for automatic PR review requests
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Each line is a file pattern followed by one or more owners.
+# Order matters - later patterns take precedence over earlier ones.
+#
+# Owners can be @username, @org/team-name, or email@example.com
+
+# Default owner for everything
+* @kholcomb
+
+# Infrastructure and deployment scripts
+/scripts/ @kholcomb
+/iam/ @kholcomb
+
+# Helm configuration
+/helm-values/ @kholcomb
+
+# Kubernetes manifests
+/manifests/ @kholcomb
+
+# Observability (Grafana dashboards, Prometheus config)
+/grafana_dashboards/ @kholcomb
+/helm-values/kube-prometheus-stack-values.yaml @kholcomb
+/helm-values/jaeger-values.yaml @kholcomb
+
+# Dependency management (Renovate)
+renovate.json @kholcomb
+
+# GitHub configuration
+/.github/ @kholcomb

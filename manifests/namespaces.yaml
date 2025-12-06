@@ -5,6 +5,7 @@ metadata:
   name: litellm
   labels:
     app.kubernetes.io/name: litellm
+    app.kubernetes.io/part-of: litellm-stack
 ---
 apiVersion: v1
 kind: Namespace
@@ -12,6 +13,7 @@ metadata:
   name: open-webui
   labels:
     app.kubernetes.io/name: open-webui
+    app.kubernetes.io/part-of: litellm-stack
 ---
 apiVersion: v1
 kind: Namespace
@@ -19,6 +21,7 @@ metadata:
   name: monitoring
   labels:
     app.kubernetes.io/name: monitoring
+    app.kubernetes.io/part-of: litellm-stack
 ---
 apiVersion: v1
 kind: Namespace
@@ -26,3 +29,12 @@ metadata:
   name: external-secrets
   labels:
     app.kubernetes.io/name: external-secrets
+    app.kubernetes.io/part-of: litellm-stack
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: gatekeeper
+    app.kubernetes.io/part-of: litellm-stack

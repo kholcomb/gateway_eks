@@ -1,0 +1,31 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireProbes
+metadata:
+  name: require-health-probes
+  annotations:
+    description: >-
+      Requires containers to have liveness and readiness probes.
+      Ensures proper health checking for production workloads.
+spec:
+  # Start in dryrun mode to audit without blocking
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet", "ReplicaSet"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+      - monitoring  # Prometheus/Grafana operators handle their own probes
+  parameters:
+    requireLivenessProbe: true
+    requireReadinessProbe: true
+    exemptImages:
+      # AWS system images
+      - "602401143452.dkr.ecr.*.amazonaws.com/*"
+      # Init containers and sidecar patterns often don't need probes
+      - "*/busybox*"
+      - "*/alpine*"

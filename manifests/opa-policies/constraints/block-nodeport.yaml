@@ -1,0 +1,21 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sBlockNodePort
+metadata:
+  name: block-nodeport-services
+  annotations:
+    description: >-
+      Blocks NodePort services to reduce attack surface.
+      Use ClusterIP with ingress or LoadBalancer instead.
+spec:
+  # Start in dryrun mode to audit without blocking
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - gatekeeper-system
+  parameters:
+    allowedNamespaces: []  # No namespaces allowed to use NodePort

@@ -24,6 +24,140 @@ error() {
     exit 1
 }
 
+warn() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARN: $*" >&2
+}
+
+# ============================================================================
+# Interactive Mode Configuration
+# ============================================================================
+INTERACTIVE_MODE="${INTERACTIVE_MODE:-true}"
+AUTO_SKIP_HEALTHY="${AUTO_SKIP_HEALTHY:-false}"
+
+# ============================================================================
+# Interactive Prompt Functions
+# ============================================================================
+
+# Check if terminal supports interactive prompts
+is_interactive() {
+    [[ "$INTERACTIVE_MODE" == "true" ]] && [[ -t 0 ]] && [[ -t 1 ]]
+}
+
+# Main interactive prompt function
+# Arguments: resource_type, resource_name, [additional_info]
+# Returns: 0=skip, 1=proceed, 2=quit
+prompt_for_action() {
+    local resource_type="$1"
+    local resource_name="$2"
+    local additional_info="${3:-}"
+
+    # Non-interactive mode
+    if ! is_interactive; then
+        log "Non-interactive mode: Proceeding with $resource_name"
+        return 1
+    fi
+
+    # Auto-skip mode enabled
+    if [[ "$AUTO_SKIP_HEALTHY" == "true" ]]; then
+        log "Auto-skip enabled: Skipping $resource_name"
+        return 0
+    fi
+
+    echo ""
+    warn "$resource_type '$resource_name' already exists"
+    if [[ -n "$additional_info" ]]; then
+        echo "    $additional_info"
+    fi
+    echo ""
+    echo "What would you like to do?"
+    echo "  [S] Skip - Keep existing resource (recommended)"
+    echo "  [P] Proceed - Update or replace the resource"
+    echo "  [V] View - Show resource details"
+    echo "  [Q] Quit - Exit setup"
+    echo ""
+
+    while true; do
+        read -p "Choose [S/p/v/q]: " -n 1 -r choice
+        echo ""
+
+        case "${choice,,}" in
+            s|"")
+                log "Skipping $resource_name"
+                return 0
+                ;;
+            p)
+                log "Proceeding with $resource_name"
+                return 1
+                ;;
+            v)
+                show_resource_details "$resource_type" "$resource_name"
+                echo ""
+                continue
+                ;;
+            q)
+                log "Setup cancelled by user"
+                return 2
+                ;;
+            *)
+                echo "Invalid choice. Please choose S, P, V, or Q."
+                continue
+                ;;
+        esac
+    done
+}
+
+# Show resource details
+# Arguments: resource_type, resource_name
+show_resource_details() {
+    local resource_type="$1"
+    local resource_name="$2"
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Resource Details: $resource_name"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    case "$resource_type" in
+        iam-role)
+            if aws iam get-role --role-name "$resource_name" &> /dev/null; then
+                echo "Role Name: $resource_name"
+                echo "Role ARN:"
+                aws iam get-role --role-name "$resource_name" --query 'Role.Arn' --output text
+                echo ""
+                echo "Attached Policies:"
+                aws iam list-attached-role-policies --role-name "$resource_name" --query 'AttachedPolicies[*].PolicyName' --output text
+                echo ""
+                echo "Inline Policies:"
+                aws iam list-role-policies --role-name "$resource_name" --query 'PolicyNames' --output text
+            fi
+            ;;
+        instance-profile)
+            if aws iam get-instance-profile --instance-profile-name "$resource_name" &> /dev/null; then
+                echo "Instance Profile: $resource_name"
+                aws iam get-instance-profile --instance-profile-name "$resource_name"
+            fi
+            ;;
+        ec2-instance)
+            local instance_id="$resource_name"
+            if aws ec2 describe-instances --instance-ids "$instance_id" --region "$AWS_REGION" &> /dev/null; then
+                echo "Instance ID: $instance_id"
+                echo ""
+                aws ec2 describe-instances --instance-ids "$instance_id" --region "$AWS_REGION" \
+                    --query 'Reservations[0].Instances[0].[InstanceType,State.Name,LaunchTime,PrivateIpAddress,PublicIpAddress]' \
+                    --output table
+                echo ""
+                echo "Tags:"
+                aws ec2 describe-instances --instance-ids "$instance_id" --region "$AWS_REGION" \
+                    --query 'Reservations[0].Instances[0].Tags' --output table
+            fi
+            ;;
+        *)
+            echo "Resource type '$resource_type' details not implemented"
+            ;;
+    esac
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # ============================================================================
 # Get EKS VPC and Subnet Information
 # ============================================================================
@@ -83,7 +217,55 @@ create_ssm_instance_profile() {
     PROFILE_NAME="$BASTION_NAME-profile"
 
     # Check if role exists
-    if ! aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then
+    if aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then
+        # Role exists - prompt user
+        prompt_for_action "iam-role" "$ROLE_NAME" "Used for SSM access to bastion instance"
+        local action=$?
+
+        case $action in
+            0)  # Skip
+                log "Skipping IAM role: $ROLE_NAME (already exists)"
+                ;;
+            1)  # Proceed - update policies
+                log "Updating IAM role policies: $ROLE_NAME"
+
+                # Re-attach SSM managed policy (idempotent)
+                aws iam attach-role-policy \
+                    --role-name "$ROLE_NAME" \
+                    --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 2>/dev/null || true
+
+                # Update EKS describe policy
+                cat > /tmp/eks-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+                aws iam put-role-policy \
+                    --role-name "$ROLE_NAME" \
+                    --policy-name eks-describe \
+                    --policy-document file:///tmp/eks-policy.json
+
+                log "Updated IAM role: $ROLE_NAME"
+                ;;
+            2)  # Quit
+                exit 0
+                ;;
+        esac
+    else
+        # Role doesn't exist - create it
+        log "Creating IAM role: $ROLE_NAME"
+
         # Create trust policy
         cat > /tmp/ec2-trust-policy.json << 'EOF'
 {
@@ -132,12 +314,17 @@ EOF
             --policy-document file:///tmp/eks-policy.json
 
         log "Created IAM role: $ROLE_NAME"
-    else
-        log "IAM role already exists: $ROLE_NAME"
     fi
 
     # Check if instance profile exists
-    if ! aws iam get-instance-profile --instance-profile-name "$PROFILE_NAME" &> /dev/null; then
+    if aws iam get-instance-profile --instance-profile-name "$PROFILE_NAME" &> /dev/null; then
+        log "Instance profile already exists: $PROFILE_NAME"
+        # Verify role is attached (idempotent)
+        aws iam add-role-to-instance-profile \
+            --instance-profile-name "$PROFILE_NAME" \
+            --role-name "$ROLE_NAME" 2>/dev/null || log "Role already attached to instance profile"
+    else
+        log "Creating instance profile: $PROFILE_NAME"
         aws iam create-instance-profile --instance-profile-name "$PROFILE_NAME"
         aws iam add-role-to-instance-profile \
             --instance-profile-name "$PROFILE_NAME" \
@@ -146,8 +333,6 @@ EOF
         log "Created instance profile: $PROFILE_NAME"
         # Wait for profile to propagate
         sleep 10
-    else
-        log "Instance profile already exists: $PROFILE_NAME"
     fi
 
     INSTANCE_PROFILE_ARN=$(aws iam get-instance-profile \
@@ -232,14 +417,96 @@ launch_instance() {
 
     # Check if instance already exists
     EXISTING_INSTANCE=$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=$BASTION_NAME" "Name=instance-state-name,Values=running,pending" \
+        --filters "Name=tag:Name,Values=$BASTION_NAME" "Name=instance-state-name,Values=running,pending,stopped,stopping" \
         --query "Reservations[0].Instances[0].InstanceId" --output text --region "$AWS_REGION")
 
     if [[ -n "$EXISTING_INSTANCE" && "$EXISTING_INSTANCE" != "None" ]]; then
-        log "Bastion instance already exists: $EXISTING_INSTANCE"
-        INSTANCE_ID="$EXISTING_INSTANCE"
+        # Instance exists - get its state
+        INSTANCE_STATE=$(aws ec2 describe-instances \
+            --instance-ids "$EXISTING_INSTANCE" \
+            --query "Reservations[0].Instances[0].State.Name" --output text --region "$AWS_REGION")
+
+        echo ""
+        warn "EC2 Instance '$BASTION_NAME' already exists"
+        echo "    Instance ID: $EXISTING_INSTANCE"
+        echo "    State: $INSTANCE_STATE"
+        echo ""
+
+        prompt_for_action "ec2-instance" "$EXISTING_INSTANCE" "State: $INSTANCE_STATE"
+        local action=$?
+
+        case $action in
+            0)  # Skip
+                log "Using existing bastion instance: $EXISTING_INSTANCE"
+                INSTANCE_ID="$EXISTING_INSTANCE"
+
+                # If stopped, ask if user wants to start it
+                if [[ "$INSTANCE_STATE" == "stopped" ]]; then
+                    echo ""
+                    read -p "Instance is stopped. Start it now? [Y/n]: " -r start_choice
+                    if [[ ! "$start_choice" =~ ^[Nn]$ ]]; then
+                        log "Starting instance: $INSTANCE_ID"
+                        aws ec2 start-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION"
+                    fi
+                fi
+                ;;
+            1)  # Proceed - terminate and recreate
+                echo ""
+                echo "⚠️  WARNING: This will TERMINATE the existing instance and create a new one!"
+                echo "    Instance ID: $EXISTING_INSTANCE"
+                echo "    Any data on this instance will be LOST."
+                echo ""
+                read -p "Are you absolutely sure you want to terminate and recreate? [y/N]: " -r confirm
+
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    log "Terminating existing instance: $EXISTING_INSTANCE"
+                    aws ec2 terminate-instances --instance-ids "$EXISTING_INSTANCE" --region "$AWS_REGION"
+
+                    log "Waiting for instance termination..."
+                    aws ec2 wait instance-terminated --instance-ids "$EXISTING_INSTANCE" --region "$AWS_REGION"
+
+                    log "Creating new bastion instance..."
+                    # Fall through to create new instance below
+                else
+                    log "Termination cancelled. Using existing instance: $EXISTING_INSTANCE"
+                    INSTANCE_ID="$EXISTING_INSTANCE"
+                    # Skip to wait section
+                    if [[ "$INSTANCE_STATE" == "running" ]]; then
+                        # Already done, return early
+                        return 0
+                    fi
+                fi
+                ;;
+            2)  # Quit
+                exit 0
+                ;;
+        esac
+
+        # If we're keeping the existing instance, skip creation
+        if [[ -n "$INSTANCE_ID" ]]; then
+            # Continue to wait section below
+            :
+        else
+            # Create new instance (user confirmed termination)
+            create_user_data
+            USER_DATA=$(base64 < /tmp/bastion-user-data.sh | tr -d '\n')
+
+            INSTANCE_ID=$(aws ec2 run-instances \
+                --image-id "$AMI_ID" \
+                --instance-type "$INSTANCE_TYPE" \
+                --subnet-id "$SUBNET_ID" \
+                --security-group-ids "$EKS_NODE_SG" \
+                --iam-instance-profile "Name=$BASTION_NAME-profile" \
+                --user-data "$USER_DATA" \
+                --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$BASTION_NAME},{Key=Purpose,Value=LLM-Testing}]" \
+                --metadata-options "HttpTokens=required,HttpPutResponseHopLimit=2,HttpEndpoint=enabled" \
+                --query "Instances[0].InstanceId" --output text --region "$AWS_REGION")
+
+            log "Launched new instance: $INSTANCE_ID"
+        fi
     else
-        # Create user data
+        # No existing instance - create new one
+        log "Creating new bastion instance..."
         create_user_data
         USER_DATA=$(base64 < /tmp/bastion-user-data.sh | tr -d '\n')
 
