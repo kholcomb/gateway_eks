@@ -1495,6 +1495,475 @@ verify_deployment() {
 }
 
 # ============================================================================
+# Infrastructure Provisioning Functions
+# ============================================================================
+
+# Verify infrastructure components exist
+verify_infrastructure() {
+    log "Verifying infrastructure components..."
+    echo ""
+
+    local has_issues=false
+
+    # Check Terraform directory
+    if [[ ! -d "$BASE_DIR/terraform" ]]; then
+        warn "Terraform directory not found"
+        has_issues=true
+    fi
+
+    # Check if EKS cluster exists
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "EKS Cluster:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if check_eks_cluster_exists "$EKS_CLUSTER_NAME"; then
+        echo "✓ EKS Cluster '$EKS_CLUSTER_NAME' exists"
+
+        # Get cluster details
+        local cluster_status
+        cluster_status=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query "cluster.status" --output text 2>/dev/null || echo "UNKNOWN")
+        echo "  Status: $cluster_status"
+
+        local cluster_version
+        cluster_version=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query "cluster.version" --output text 2>/dev/null || echo "UNKNOWN")
+        echo "  Version: $cluster_version"
+
+        local cluster_endpoint
+        cluster_endpoint=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query "cluster.endpoint" --output text 2>/dev/null || echo "UNKNOWN")
+        echo "  Endpoint: $cluster_endpoint"
+    else
+        echo "✗ EKS Cluster '$EKS_CLUSTER_NAME' not found"
+        has_issues=true
+    fi
+    echo ""
+
+    # Check VPC
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "VPC:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if check_eks_cluster_exists "$EKS_CLUSTER_NAME"; then
+        local vpc_id
+        vpc_id=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query "cluster.resourcesVpcConfig.vpcId" --output text 2>/dev/null)
+        if [[ -n "$vpc_id" && "$vpc_id" != "None" ]]; then
+            echo "✓ VPC: $vpc_id"
+
+            # Count subnets
+            local subnet_count
+            subnet_count=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" --region "$AWS_REGION" --query "Subnets | length(@)" --output text 2>/dev/null || echo "0")
+            echo "  Subnets: $subnet_count"
+        else
+            echo "✗ VPC not found for cluster"
+            has_issues=true
+        fi
+    else
+        echo "✗ Cannot check VPC (cluster not found)"
+    fi
+    echo ""
+
+    # Check OIDC Provider
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "OIDC Provider:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if check_eks_cluster_exists "$EKS_CLUSTER_NAME"; then
+        local oidc_issuer
+        oidc_issuer=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --query "cluster.identity.oidc.issuer" --output text 2>/dev/null)
+        if [[ -n "$oidc_issuer" && "$oidc_issuer" != "None" ]]; then
+            echo "✓ OIDC Provider: $oidc_issuer"
+        else
+            echo "✗ OIDC Provider not configured"
+            has_issues=true
+        fi
+    else
+        echo "✗ Cannot check OIDC (cluster not found)"
+    fi
+    echo ""
+
+    # Check IAM Roles
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "IAM Roles (IRSA):"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if check_iam_role_exists "litellm-bedrock-role"; then
+        echo "✓ litellm-bedrock-role exists"
+    else
+        echo "✗ litellm-bedrock-role not found"
+        has_issues=true
+    fi
+
+    if check_iam_role_exists "external-secrets-role"; then
+        echo "✓ external-secrets-role exists"
+    else
+        echo "✗ external-secrets-role not found"
+        has_issues=true
+    fi
+    echo ""
+
+    # Check AWS Secrets
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "AWS Secrets Manager:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    local secrets=("litellm/master-key" "litellm/salt-key" "litellm/redis-password" "litellm/database-url")
+    for secret in "${secrets[@]}"; do
+        if check_aws_secret_exists "$secret"; then
+            echo "✓ $secret exists"
+        else
+            echo "✗ $secret not found"
+            has_issues=true
+        fi
+    done
+    echo ""
+
+    # Check RDS
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "RDS Database:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Try to extract DB endpoint from database-url secret
+    if check_aws_secret_exists "litellm/database-url"; then
+        local db_url
+        db_url=$(aws secretsmanager get-secret-value --secret-id "litellm/database-url" --region "$AWS_REGION" --query "SecretString" --output text 2>/dev/null || echo "")
+        if [[ -n "$db_url" ]]; then
+            # Extract host from connection string (postgresql://user:pass@host:port/db)
+            local db_host
+            db_host=$(echo "$db_url" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+            if [[ -n "$db_host" ]]; then
+                echo "✓ Database endpoint configured: $db_host"
+            else
+                echo "⚠ Database URL exists but could not parse endpoint"
+            fi
+        fi
+    else
+        echo "✗ Database URL secret not found"
+        has_issues=true
+    fi
+    echo ""
+
+    # Check kubectl connection
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "kubectl Connection:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if kubectl cluster-info &> /dev/null; then
+        echo "✓ kubectl connected to cluster"
+        local current_context
+        current_context=$(kubectl config current-context 2>/dev/null || echo "unknown")
+        echo "  Context: $current_context"
+    else
+        echo "✗ kubectl not connected to cluster"
+        echo "  Run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION"
+        has_issues=true
+    fi
+    echo ""
+
+    # Summary
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Summary:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [[ "$has_issues" == "false" ]]; then
+        echo "✓ All infrastructure components verified"
+        echo ""
+        log "Infrastructure verification complete - ready for application deployment"
+        return 0
+    else
+        echo "✗ Some infrastructure components are missing"
+        echo ""
+        log "Infrastructure verification found issues"
+        if is_interactive; then
+            echo ""
+            read -p "Would you like to deploy missing infrastructure now? [Y/n]: " -r choice
+            if [[ ! "$choice" =~ ^[Nn]$ ]]; then
+                deploy_infrastructure
+            fi
+        fi
+        return 1
+    fi
+}
+
+# List all available components
+list_components() {
+    cat << 'COMPONENTS'
+Available Components:
+
+INFRASTRUCTURE (Terraform):
+  ├─ vpc                  VPC, subnets, NAT gateways, route tables
+  ├─ eks                  EKS cluster, node groups, OIDC provider
+  ├─ rds                  PostgreSQL database (Multi-AZ)
+  ├─ secrets              AWS Secrets Manager secrets
+  ├─ iam                  IAM roles for IRSA (Bedrock, External Secrets)
+  └─ bastion              (Optional) EC2 bastion for testing
+
+  Note: Infrastructure components are deployed together via Terraform.
+        Use: ./deploy.sh infrastructure
+
+APPLICATION (Kubernetes):
+  ├─ namespaces           Kubernetes namespaces
+  ├─ irsa                 IAM roles for service accounts
+  ├─ helm-repos           Helm repository configuration
+  ├─ external-secrets     External Secrets Operator + ClusterSecretStore
+  ├─ gatekeeper           OPA Gatekeeper policy engine
+  ├─ opa-policies         OPA policy constraints
+  ├─ monitoring           Prometheus + Grafana + AlertManager
+  ├─ dashboards           Grafana dashboards for LiteLLM
+  ├─ jaeger               Distributed tracing
+  ├─ redis                Redis HA (required for LiteLLM)
+  ├─ litellm              LiteLLM AI gateway (requires Redis)
+  └─ openwebui            OpenWebUI frontend (requires LiteLLM)
+
+DEPLOYMENT MODES:
+  ├─ infrastructure       Deploy all infrastructure (Terraform)
+  ├─ all                  Deploy all applications (Kubernetes)
+  ├─ complete             Deploy infrastructure + applications
+  └─ <component>          Deploy specific component
+
+VERIFICATION:
+  ├─ infrastructure-verify  Check infrastructure components
+  ├─ verify                 Check application deployments
+  └─ opa-verify             Check OPA policy status
+
+Run './deploy.sh help' for detailed usage information.
+COMPONENTS
+}
+
+# Deploy infrastructure using Terraform
+deploy_infrastructure() {
+    log "Deploying infrastructure using Terraform..."
+
+    local terraform_dir="$BASE_DIR/terraform"
+
+    # Check if terraform directory exists
+    if [[ ! -d "$terraform_dir" ]]; then
+        error "Terraform directory not found: $terraform_dir"
+    fi
+
+    # Check if terraform is installed
+    if ! command -v terraform &> /dev/null; then
+        error "Terraform is not installed. Please install Terraform >= 1.5.0"
+    fi
+
+    # Check terraform version
+    local tf_version
+    tf_version=$(terraform version -json 2>/dev/null | grep -o '"terraform_version":"[^"]*"' | cut -d'"' -f4)
+    log "Terraform version: $tf_version"
+
+    cd "$terraform_dir" || error "Failed to change to terraform directory"
+
+    # Check if terraform.tfvars exists
+    if [[ ! -f "terraform.tfvars" ]]; then
+        warn "terraform.tfvars not found. Please create it from terraform.tfvars.example"
+        echo ""
+        echo "Run: cp terraform.tfvars.example terraform.tfvars"
+        echo "Then edit terraform.tfvars with your values"
+        echo ""
+
+        if is_interactive; then
+            read -p "Would you like to create terraform.tfvars from the example now? [Y/n]: " -r choice
+            if [[ ! "$choice" =~ ^[Nn]$ ]]; then
+                cp terraform.tfvars.example terraform.tfvars
+                log "Created terraform.tfvars from example"
+                warn "Please edit terraform.tfvars before proceeding"
+
+                # Open in default editor if available
+                if [[ -n "${EDITOR:-}" ]]; then
+                    "$EDITOR" terraform.tfvars
+                else
+                    echo "Edit with: ${VISUAL:-vi} terraform.tfvars"
+                fi
+
+                read -p "Press Enter when ready to continue..."
+            else
+                error "terraform.tfvars is required for deployment"
+            fi
+        else
+            error "terraform.tfvars is required. Create it from terraform.tfvars.example"
+        fi
+    fi
+
+    # Initialize Terraform if needed
+    if [[ ! -d ".terraform" ]]; then
+        log "Initializing Terraform..."
+        terraform init || error "Terraform init failed"
+    fi
+
+    # Validate Terraform configuration
+    log "Validating Terraform configuration..."
+    terraform validate || error "Terraform validation failed"
+
+    # Plan
+    log "Running Terraform plan..."
+    terraform plan -out=tfplan || error "Terraform plan failed"
+
+    # Confirm apply
+    if is_interactive; then
+        echo ""
+        warn "Terraform plan complete. Review the plan above."
+        echo ""
+        read -p "Apply this plan? This will create AWS infrastructure. [y/N]: " -r confirm
+
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log "Terraform apply cancelled"
+            rm -f tfplan
+            cd "$BASE_DIR" || true
+            exit 0
+        fi
+    fi
+
+    # Apply
+    log "Applying Terraform configuration..."
+    terraform apply tfplan || error "Terraform apply failed"
+    rm -f tfplan
+
+    # Export variables for subsequent deployment
+    log "Exporting Terraform outputs..."
+    export AWS_REGION=$(terraform output -raw aws_region 2>/dev/null || echo "$AWS_REGION")
+    export EKS_CLUSTER_NAME=$(terraform output -raw eks_cluster_name 2>/dev/null || echo "$EKS_CLUSTER_NAME")
+    export AWS_ACCOUNT_ID=$(terraform output -raw aws_account_id 2>/dev/null || aws sts get-caller-identity --query Account --output text)
+
+    log "Infrastructure deployment complete!"
+    log ""
+    log "Next steps:"
+    log "1. Configure kubectl: $(terraform output -raw configure_kubectl)"
+    log "2. Run application deployment: $BASE_DIR/scripts/deploy.sh all"
+
+    cd "$BASE_DIR" || true
+}
+
+# Destroy infrastructure using Terraform
+destroy_infrastructure() {
+    log "Destroying infrastructure using Terraform..."
+
+    local terraform_dir="$BASE_DIR/terraform"
+
+    if [[ ! -d "$terraform_dir" ]]; then
+        error "Terraform directory not found: $terraform_dir"
+    fi
+
+    cd "$terraform_dir" || error "Failed to change to terraform directory"
+
+    # Confirm destruction
+    echo ""
+    warn "⚠️  WARNING: This will DESTROY all infrastructure resources!"
+    echo "This includes:"
+    echo "  - EKS cluster and all workloads"
+    echo "  - RDS database (data will be lost unless you have backups)"
+    echo "  - VPC and networking"
+    echo "  - Secrets in AWS Secrets Manager"
+    echo "  - Bastion instance (if created)"
+    echo ""
+
+    if is_interactive; then
+        read -p "Type 'destroy' to confirm destruction: " -r confirm
+
+        if [[ "$confirm" != "destroy" ]]; then
+            log "Destruction cancelled"
+            cd "$BASE_DIR" || true
+            exit 0
+        fi
+
+        read -p "Are you absolutely sure? [y/N]: " -r confirm2
+        if [[ ! "$confirm2" =~ ^[Yy]$ ]]; then
+            log "Destruction cancelled"
+            cd "$BASE_DIR" || true
+            exit 0
+        fi
+    fi
+
+    # Destroy
+    log "Destroying infrastructure..."
+    terraform destroy -auto-approve || error "Terraform destroy failed"
+
+    log "Infrastructure destroyed successfully"
+    cd "$BASE_DIR" || true
+}
+
+# Plan infrastructure changes using Terraform
+plan_infrastructure() {
+    log "Planning infrastructure changes..."
+
+    local terraform_dir="$BASE_DIR/terraform"
+
+    if [[ ! -d "$terraform_dir" ]]; then
+        error "Terraform directory not found: $terraform_dir"
+    fi
+
+    cd "$terraform_dir" || error "Failed to change to terraform directory"
+
+    # Initialize if needed
+    if [[ ! -d ".terraform" ]]; then
+        log "Initializing Terraform..."
+        terraform init || error "Terraform init failed"
+    fi
+
+    # Validate
+    log "Validating Terraform configuration..."
+    terraform validate || error "Terraform validation failed"
+
+    # Plan
+    log "Running Terraform plan..."
+    terraform plan || error "Terraform plan failed"
+
+    cd "$BASE_DIR" || true
+}
+
+# ============================================================================
+# Complete End-to-End Deployment
+# ============================================================================
+deploy_complete() {
+    log "Starting complete end-to-end deployment..."
+    log "This will:"
+    log "  1. Deploy infrastructure (Terraform)"
+    log "  2. Configure kubectl"
+    log "  3. Deploy applications to Kubernetes"
+    echo ""
+
+    # Deploy infrastructure
+    deploy_infrastructure
+
+    # Configure kubectl
+    log "Configuring kubectl..."
+    local terraform_dir="$BASE_DIR/terraform"
+    cd "$terraform_dir" || error "Failed to change to terraform directory"
+
+    local kubectl_cmd
+    kubectl_cmd=$(terraform output -raw configure_kubectl 2>/dev/null)
+
+    if [[ -n "$kubectl_cmd" ]]; then
+        eval "$kubectl_cmd" || error "Failed to configure kubectl"
+        log "kubectl configured successfully"
+    else
+        warn "Could not get kubectl configuration from Terraform output"
+        log "Attempting to configure kubectl manually..."
+        aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" || error "Failed to configure kubectl"
+    fi
+
+    cd "$BASE_DIR" || true
+
+    # Verify kubectl connection
+    if ! kubectl cluster-info &> /dev/null; then
+        error "kubectl cannot connect to cluster. Please check your configuration"
+    fi
+
+    # Deploy applications
+    log "Deploying applications to Kubernetes..."
+    validate_yaml_files
+    create_irsa_roles
+    create_aws_secrets
+    add_helm_repos
+    create_namespaces
+    deploy_external_secrets
+    create_secret_stores
+    deploy_gatekeeper
+    apply_opa_policies
+    deploy_monitoring
+    deploy_jaeger
+    deploy_redis
+    deploy_litellm
+    deploy_openwebui
+    verify_deployment
+    verify_opa_policies
+
+    log "Complete deployment finished successfully!"
+}
+
+# ============================================================================
 # Main
 # ============================================================================
 main() {
@@ -1503,59 +1972,97 @@ main() {
     log "AWS Region: $AWS_REGION"
     log "EKS Cluster: $EKS_CLUSTER_NAME"
 
-    check_prerequisites
-
     case "${1:-all}" in
+        # Infrastructure provisioning commands
+        infra|infrastructure)
+            deploy_infrastructure
+            ;;
+        infra-plan|infrastructure-plan)
+            plan_infrastructure
+            ;;
+        infra-verify|infrastructure-verify|verify-infra)
+            verify_infrastructure
+            ;;
+        infra-destroy|infrastructure-destroy)
+            destroy_infrastructure
+            ;;
+        complete|full)
+            deploy_complete
+            ;;
+
+        # Component listing
+        list|components|ls)
+            list_components
+            ;;
+
+        # Existing application deployment commands
         validate)
+            check_prerequisites
             validate_yaml_files
             ;;
         irsa)
+            check_prerequisites
             create_irsa_roles
             ;;
         secrets)
+            check_prerequisites
             create_aws_secrets
             ;;
         helm-repos)
+            check_prerequisites
             add_helm_repos
             ;;
         namespaces)
+            check_prerequisites
             create_namespaces
             ;;
         external-secrets)
+            check_prerequisites
             deploy_external_secrets
             create_secret_stores
             ;;
         monitoring)
+            check_prerequisites
             deploy_monitoring
             ;;
         dashboards)
+            check_prerequisites
             deploy_grafana_dashboards
             ;;
         jaeger)
+            check_prerequisites
             deploy_jaeger
             ;;
         redis)
+            check_prerequisites
             deploy_redis
             ;;
         litellm)
+            check_prerequisites
             deploy_litellm
             ;;
         openwebui)
+            check_prerequisites
             deploy_openwebui
             ;;
         gatekeeper)
+            check_prerequisites
             deploy_gatekeeper
             ;;
         opa-policies)
+            check_prerequisites
             apply_opa_policies
             ;;
         opa-verify)
+            check_prerequisites
             verify_opa_policies
             ;;
         verify)
+            check_prerequisites
             verify_deployment
             ;;
         all)
+            check_prerequisites
             validate_yaml_files
             create_irsa_roles
             create_aws_secrets
@@ -1573,8 +2080,85 @@ main() {
             verify_deployment
             verify_opa_policies
             ;;
+        help|--help|-h)
+            cat << 'HELP'
+LiteLLM Deployment Script
+
+USAGE:
+    ./deploy.sh [COMMAND]
+
+INFRASTRUCTURE COMMANDS (Terraform):
+    infrastructure, infra             Deploy AWS infrastructure (VPC, EKS, RDS, etc.)
+    infrastructure-plan, infra-plan   Show what infrastructure changes would be made
+    infrastructure-verify, infra-verify Verify infrastructure components exist
+    infrastructure-destroy            Destroy all infrastructure (WARNING: destructive!)
+    complete, full                    Deploy infrastructure + configure kubectl + deploy apps
+
+APPLICATION DEPLOYMENT COMMANDS (Kubernetes):
+    all                   Deploy all application components to existing EKS cluster
+    list, components, ls  List all available components and deployment modes
+    validate              Validate YAML files only
+    irsa                  Create IAM roles for service accounts
+    secrets               Create secrets in AWS Secrets Manager
+    helm-repos            Add Helm repositories
+    namespaces            Create Kubernetes namespaces
+    external-secrets      Deploy External Secrets Operator and sync secrets
+    monitoring            Deploy kube-prometheus-stack
+    dashboards            Deploy Grafana dashboards
+    jaeger                Deploy Jaeger for distributed tracing
+    redis                 Deploy Redis HA
+    litellm               Deploy LiteLLM application
+    openwebui             Deploy OpenWebUI frontend
+    gatekeeper            Deploy OPA Gatekeeper
+    opa-policies          Apply OPA policies
+    opa-verify            Verify OPA policy status
+    verify                Verify deployment status
+
+ENVIRONMENT VARIABLES:
+    AWS_REGION            AWS region (default: us-east-1)
+    AWS_ACCOUNT_ID        AWS account ID (auto-detected if not set)
+    EKS_CLUSTER_NAME      EKS cluster name (default: my-eks-cluster)
+    INTERACTIVE_MODE      Enable interactive prompts (default: true)
+    AUTO_SKIP_HEALTHY     Auto-skip healthy resources (default: false)
+    SKIP_ALL              Skip all prompts in non-interactive mode (default: false)
+
+EXAMPLES:
+    # Complete deployment from scratch
+    ./deploy.sh complete
+
+    # Verify infrastructure exists
+    ./deploy.sh infrastructure-verify
+
+    # List all available components
+    ./deploy.sh list
+
+    # Deploy infrastructure only
+    ./deploy.sh infrastructure
+
+    # Preview infrastructure changes
+    ./deploy.sh infrastructure-plan
+
+    # Deploy applications to existing cluster
+    ./deploy.sh all
+
+    # Deploy specific components selectively
+    ./deploy.sh redis
+    ./deploy.sh litellm
+    ./deploy.sh openwebui
+
+    # Non-interactive deployment
+    INTERACTIVE_MODE=false ./deploy.sh all
+
+    # Auto-skip healthy resources
+    AUTO_SKIP_HEALTHY=true ./deploy.sh all
+
+For more information, see scripts/README.md
+HELP
+            exit 0
+            ;;
         *)
-            echo "Usage: $0 {validate|all|irsa|secrets|helm-repos|namespaces|external-secrets|monitoring|dashboards|jaeger|redis|litellm|openwebui|gatekeeper|opa-policies|opa-verify|verify}"
+            echo "Usage: $0 {infrastructure|infrastructure-plan|infrastructure-destroy|complete|all|validate|...}"
+            echo "Run '$0 help' for full usage information"
             exit 1
             ;;
     esac
