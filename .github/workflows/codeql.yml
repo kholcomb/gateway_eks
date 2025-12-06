@@ -1,0 +1,38 @@
+name: "CodeQL Security Scanning"
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+  schedule:
+    # Run at 6:00 AM UTC every Monday
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@cf1bb45a277cb3c205638b2cd5c984db1c46a412 # v4
+      with:
+        # CodeQL will auto-detect languages in the repository
+        # Since this is primarily an IaC repo, we're using language detection
+        # to scan any supported code files present
+        queries: security-extended
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@cf1bb45a277cb3c205638b2cd5c984db1c46a412 # v4

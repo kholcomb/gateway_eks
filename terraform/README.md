@@ -151,6 +151,82 @@ bedrock_model_arns = [
 ]
 ```
 
+### VPC Subnet Configuration
+
+The VPC module creates three types of subnets across multiple availability zones:
+
+#### Default Subnet Layout (with 10.0.0.0/16 VPC and 3 AZs)
+
+| Subnet Type | AZ | CIDR Block | IPs Available | Purpose |
+|-------------|----|-----------:|-------------:|---------|
+| Public      | 1  | 10.0.0.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Public      | 2  | 10.0.16.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Public      | 3  | 10.0.32.0/20 | 4,091 | NAT Gateway, Load Balancers |
+| Private     | 1  | 10.0.48.0/20 | 4,091 | EKS worker nodes, pods |
+| Private     | 2  | 10.0.64.0/20 | 4,091 | EKS worker nodes, pods |
+| Private     | 3  | 10.0.80.0/20 | 4,091 | EKS worker nodes, pods |
+| Database    | 1  | 10.0.96.0/20 | 4,091 | RDS instances |
+| Database    | 2  | 10.0.112.0/20 | 4,091 | RDS instances |
+| Database    | 3  | 10.0.128.0/20 | 4,091 | RDS instances |
+
+**Total subnets**: 9 (3 AZs × 3 types)
+**Address space used**: 10.0.0.0 - 10.0.143.255 (36,864 IPs)
+**Address space available**: 10.0.144.0 - 10.0.255.255 (28,672 IPs for future expansion)
+
+#### Customizing Subnet Sizes
+
+The subnet sizing is configurable via the `*_subnet_newbits` variables in the VPC module. The default is 4, which creates /20 subnets from a /16 VPC.
+
+**Example: Larger subnets for more pods**
+
+If you need more IPs per subnet (e.g., for large EKS clusters with many pods):
+
+```hcl
+# In your root main.tf or terraform.tfvars
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc_cidr                = "10.0.0.0/16"
+  public_subnet_newbits   = 6   # /22 subnets (1,019 IPs)
+  private_subnet_newbits  = 3   # /19 subnets (8,187 IPs) - more room for pods
+  database_subnet_newbits = 6   # /22 subnets (1,019 IPs)
+
+  # ... other variables
+}
+```
+
+**Example: Smaller subnets for resource efficiency**
+
+For smaller deployments:
+
+```hcl
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc_cidr                = "10.0.0.0/16"
+  public_subnet_newbits   = 8   # /24 subnets (251 IPs)
+  private_subnet_newbits  = 6   # /22 subnets (1,019 IPs)
+  database_subnet_newbits = 8   # /24 subnets (251 IPs)
+
+  # ... other variables
+}
+```
+
+**Important Considerations**:
+- **EKS IP requirements**: Each pod gets an IP from the VPC. Plan accordingly.
+- **Secondary CIDR blocks**: EKS supports secondary CIDR blocks if you run out of IPs.
+- **Subnet expansion**: Subnets cannot be resized after creation. Plan for growth.
+
+#### IP Address Planning
+
+For a production EKS cluster with 100 nodes and 30 pods per node:
+- **Nodes**: 100 IPs
+- **Pods**: 3,000 IPs
+- **Headroom**: ~1,000 IPs for autoscaling
+- **Total needed**: ~4,100 IPs → Use /20 subnets (4,096 IPs) or larger
+
+**Recommendation**: Use /19 or /18 subnets for private subnets if you plan to run large workloads.
+
 ## Testing with the Bastion
 
 The bastion provides a way to test OpenWebUI and other services **without exposing them to the internet**. It's a simple EC2 in a private subnet that you access via SSM Session Manager, then use `kubectl port-forward` to access services locally.

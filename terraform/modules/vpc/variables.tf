@@ -40,6 +40,24 @@ variable "flow_logs_retention_days" {
   default     = 30
 }
 
+variable "public_subnet_newbits" {
+  description = "Number of additional bits to add to VPC CIDR for public subnets (e.g., 4 creates /20 subnets from /16 VPC)"
+  type        = number
+  default     = 4
+}
+
+variable "private_subnet_newbits" {
+  description = "Number of additional bits to add to VPC CIDR for private subnets"
+  type        = number
+  default     = 4
+}
+
+variable "database_subnet_newbits" {
+  description = "Number of additional bits to add to VPC CIDR for database subnets"
+  type        = number
+  default     = 4
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
