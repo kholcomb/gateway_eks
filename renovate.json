@@ -96,9 +96,8 @@
     ]
   },
   "helm-values": {
-    "fileMatch": [
-      "(^|/)values\\.ya?ml$",
-      "(^|/)values\\..+\\.ya?ml$"
+    "managerFilePatterns": [
+      "/helm-values/.*\\.yaml$/"
     ]
   },
   "kubernetes": {
