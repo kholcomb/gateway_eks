@@ -50,6 +50,13 @@ extraEnvVars:
         name: litellm-secrets
         key: salt-key
 
+  # JWT Public Key URL for Okta token validation
+  - name: JWT_PUBLIC_KEY_URL
+    valueFrom:
+      secretKeyRef:
+        name: litellm-secrets
+        key: jwt-public-key-url
+
   # AWS Region for Bedrock (boto3 will use IRSA for credentials)
   - name: AWS_DEFAULT_REGION
     value: "us-east-1"  # TODO: Change to your region
@@ -147,8 +154,14 @@ proxy_config:
     master_key: "os.environ/LITELLM_MASTER_KEY"
     database_url: "os.environ/DATABASE_URL"
 
-    # Enable proxy features
-    enable_jwt_auth: false
+    # JWT Authentication - Enable Okta OIDC token validation
+    # Clients must include: Authorization: Bearer <okta-jwt-token>
+    # LiteLLM will validate token signature against Okta's public keys
+    enable_jwt_auth: true
+    jwt_public_key_url: "os.environ/JWT_PUBLIC_KEY_URL"
+
+    # Optional: Validate JWT audience claim
+    # jwt_audience: "api://litellm"
 
     # Request limits
     max_request_size_mb: 50

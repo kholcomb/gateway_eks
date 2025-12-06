@@ -13,22 +13,73 @@ openaiBaseApiUrls:
 
 # API key from ExternalSecret
 extraEnvVars:
+  # NOTE: OpenWebUI will NOT use this master-key anymore in JWT mode
+  # Instead, it will pass the user's Okta JWT token to LiteLLM
+  # Keeping this for backward compatibility during transition
   - name: OPENAI_API_KEY
     valueFrom:
       secretKeyRef:
         name: openwebui-secrets
         key: openai-api-key
 
-  # Disable signup in production (optional)
-  # - name: ENABLE_SIGNUP
-  #   value: "false"
-
   # Webui secret key for session encryption
   - name: WEBUI_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: openwebui-secrets
-        key: openai-api-key  # Reusing for simplicity, or create separate secret
+        key: webui-secret-key
+
+  # OAuth/OIDC Configuration - Okta SSO
+  - name: OAUTH_PROVIDER
+    value: "oidc"
+
+  - name: OAUTH_PROVIDER_NAME
+    value: "Okta"
+
+  - name: OPENID_PROVIDER_URL
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: okta-openid-url
+
+  - name: OAUTH_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: okta-client-id
+
+  - name: OAUTH_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: okta-client-secret
+
+  - name: OAUTH_SCOPES
+    value: "openid email profile groups"
+
+  # Auto-provision users on first Okta login
+  - name: ENABLE_OAUTH_SIGNUP
+    value: "true"
+
+  # Disable password-based authentication (OAuth only)
+  - name: ENABLE_PASSWORD_AUTH
+    value: "false"
+
+  # Enable Okta group synchronization for RBAC
+  - name: ENABLE_OAUTH_GROUP_MANAGEMENT
+    value: "true"
+
+  # OAuth role mapping (map Okta groups to OpenWebUI roles)
+  # Format: okta-group:openwebui-role
+  - name: OAUTH_ROLES_CLAIM
+    value: "groups"
+
+  # Admin users (comma-separated emails)
+  - name: ADMIN_EMAIL
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: admin-email
 
 # Disable bundled Ollama (using LiteLLM instead)
 ollama:
