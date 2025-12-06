@@ -179,3 +179,16 @@ output "bastion_ssm_connect_command" {
   description = "Command to connect to the bastion via SSM Session Manager"
   value       = var.create_bastion ? module.bastion[0].ssm_connect_command : null
 }
+
+# -----------------------------------------------------------------------------
+# Additional Helper Outputs
+# -----------------------------------------------------------------------------
+output "aws_region" {
+  description = "AWS region where resources are deployed"
+  value       = var.aws_region
+}
+
+output "aws_account_id" {
+  description = "AWS account ID"
+  value       = data.aws_caller_identity.current.account_id
+}
