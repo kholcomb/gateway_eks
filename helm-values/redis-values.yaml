@@ -85,6 +85,19 @@ securityContext:
   fsGroup: 1000
   runAsNonRoot: true
 
-# Extra labels
+# Container security context (OPA compliant)
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # Redis needs to write data
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# Standard Kubernetes labels (OPA compliant)
 labels:
+  app.kubernetes.io/name: redis
+  app.kubernetes.io/version: "7.4.1-alpine"
+  app.kubernetes.io/component: cache
   app.kubernetes.io/part-of: litellm-stack

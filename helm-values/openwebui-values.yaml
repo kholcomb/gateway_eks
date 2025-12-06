@@ -92,7 +92,19 @@ podAnnotations:
 podSecurityContext:
   fsGroup: 1000
 
-# Container security context
+# Container security context (OPA compliant)
 containerSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # OpenWebUI needs to write temp files
+  capabilities:
+    drop:
+      - ALL
+
+# Standard Kubernetes labels (OPA compliant)
+labels:
+  app.kubernetes.io/name: open-webui
+  app.kubernetes.io/version: "v0.6.41"
+  app.kubernetes.io/component: frontend
+  app.kubernetes.io/part-of: litellm-stack

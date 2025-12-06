@@ -95,26 +95,6 @@ terraform output configure_kubectl
 aws eks update-kubeconfig --name litellm-eks --region us-east-1
 ```
 
-### 4.5. Configure Storage Class (One-Time Setup)
-
-**Important**: EKS creates a default `gp2` storage class. If you enabled `gp3_as_default = true` in your configuration, you need to remove the default annotation from the gp2 class to avoid conflicts.
-
-```bash
-# Check current default storage class
-kubectl get storageclass
-
-# Remove default annotation from gp2 (if it exists)
-kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
-
-# Verify gp3 is now the default
-kubectl get storageclass
-# NAME   PROVISIONER       RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-# gp2    kubernetes.io...  Delete          WaitForFirstConsumer   false                  10m
-# gp3    ebs.csi.aws.com   Delete          WaitForFirstConsumer   true                   5m   (default)
-```
-
-**Note**: This only needs to be done once after cluster creation. If you set `gp3_as_default = false`, skip this step.
-
 ### 5. Deploy Applications
 
 After infrastructure is provisioned, run the Kubernetes deployment:
@@ -126,82 +106,6 @@ eval "$(terraform output -raw deploy_script_env_vars)"
 # Run the deployment script
 ../scripts/deploy.sh all
 ```
-
-## Important: Database Connection Setup
-
-**Critical Note**: The Terraform infrastructure creates the database with an **AWS-managed password** stored in Secrets Manager. This is a security best practice, but it requires special handling in your External Secrets configuration.
-
-### How Database Credentials Work
-
-1. **RDS Password**: AWS automatically generates and manages the master password in Secrets Manager
-   - ARN available at: `terraform output rds_master_user_secret_arn`
-   - Secret format: `{"password": "generated-password"}`
-
-2. **Database URL Secret**: Terraform creates a separate secret with the connection template
-   - ARN available at: `terraform output secrets_database_url_arn`
-   - Format: `postgresql://litellm@hostname:5432/litellm` (no password)
-
-### External Secrets Configuration
-
-Your External Secrets `SecretStore` and `ExternalSecret` must **merge** these two secrets:
-
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: litellm-db-secret
-  namespace: litellm
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: aws-secrets-manager
-    kind: SecretStore
-  target:
-    name: litellm-database
-    creationPolicy: Owner
-    template:
-      engineVersion: v2
-      data:
-        # Construct full database URL with password from RDS secret
-        DATABASE_URL: |
-          postgresql://{{ .username }}:{{ .password | urlquery }}@{{ .endpoint }}/{{ .database }}
-  dataFrom:
-    - extract:
-        key: <RDS_SECRET_ARN>  # Get from terraform output
-      rewrite:
-        - regexp:
-            source: "password"
-            target: "password"
-    - extract:
-        key: <DB_URL_SECRET_ARN>  # Get from terraform output (contains endpoint, username, database)
-```
-
-**Alternative Approach**: Use the RDS endpoint directly in your ExternalSecret template:
-
-```yaml
-data:
-  DATABASE_URL: "postgresql://litellm:{{ .password | urlquery }}@{{ .endpoint }}/litellm"
-dataFrom:
-  - extract:
-      key: arn:aws:secretsmanager:region:account:secret:rds!cluster-xxx
-    rewrite:
-      - regexp:
-          source: "password"
-          target: "password"
-      - regexp:
-          source: "host"
-          target: "endpoint"
-```
-
-**Getting the ARNs**:
-```bash
-# After terraform apply, get the secret ARNs:
-terraform output rds_master_user_secret_arn
-terraform output secrets_database_url_arn
-terraform output rds_endpoint  # hostname:port
-```
-
-**Note**: The deployment script (`../scripts/deploy.sh`) should already handle this configuration. Check the External Secrets manifests in `../k8s/` to verify.
 
 ## Configuration
 

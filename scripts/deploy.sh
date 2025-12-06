@@ -905,6 +905,7 @@ add_helm_repos() {
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
     helm repo add open-webui https://helm.openwebui.com/ || true
     helm repo add jaegertracing https://jaegertracing.github.io/helm-charts || true
+    helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts || true
 
     helm repo update
 
@@ -1358,6 +1359,88 @@ deploy_openwebui() {
 }
 
 # ============================================================================
+# Step 11: Deploy OPA Gatekeeper
+# ============================================================================
+deploy_gatekeeper() {
+    log "Deploying OPA Gatekeeper..."
+
+    helm upgrade --install gatekeeper gatekeeper/gatekeeper \
+        -n gatekeeper-system \
+        --create-namespace \
+        -f "$BASE_DIR/helm-values/gatekeeper-values.yaml" \
+        --wait --timeout 5m
+
+    # Verify Helm release
+    verify_helm_release "gatekeeper" "gatekeeper-system"
+
+    # Wait for Gatekeeper components to be ready
+    log "Verifying Gatekeeper components..."
+    kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n gatekeeper-system --timeout=180s
+    kubectl wait --for=condition=Ready pod -l control-plane=audit-controller -n gatekeeper-system --timeout=180s
+
+    log "OPA Gatekeeper deployed and verified"
+}
+
+# ============================================================================
+# Step 12: Apply OPA Policies (Constraint Templates and Constraints)
+# ============================================================================
+apply_opa_policies() {
+    log "Applying OPA constraint templates..."
+
+    # Apply constraint templates first
+    kubectl apply -f "$BASE_DIR/manifests/opa-policies/templates/"
+
+    # Wait for constraint templates to be established
+    log "Waiting for constraint templates to be ready..."
+    sleep 10  # Give time for CRDs to be registered
+
+    # Verify constraint templates are created
+    local template_count
+    template_count=$(kubectl get constrainttemplates --no-headers 2>/dev/null | wc -l)
+    log "Created $template_count constraint templates"
+
+    log "Applying OPA constraints (in dryrun mode)..."
+
+    # Apply constraints
+    kubectl apply -f "$BASE_DIR/manifests/opa-policies/constraints/"
+
+    # Verify constraints are created
+    local constraint_count
+    constraint_count=$(kubectl get constraints --no-headers 2>/dev/null | wc -l)
+    log "Created $constraint_count constraints"
+
+    log "OPA policies applied successfully"
+    log "NOTE: All constraints are in 'dryrun' mode. Change enforcementAction to 'deny' to enforce."
+}
+
+# ============================================================================
+# Verify OPA Policy Status
+# ============================================================================
+verify_opa_policies() {
+    log "Verifying OPA policy status..."
+
+    echo ""
+    echo "============================================"
+    echo "Constraint Templates:"
+    echo "============================================"
+    kubectl get constrainttemplates
+
+    echo ""
+    echo "============================================"
+    echo "Constraints and Violations:"
+    echo "============================================"
+    kubectl get constraints
+
+    echo ""
+    echo "============================================"
+    echo "Audit Violations (if any):"
+    echo "============================================"
+    kubectl get constraints -o json | jq -r '.items[] | select(.status.totalViolations > 0) | "\(.metadata.name): \(.status.totalViolations) violations"' 2>/dev/null || echo "No violations found"
+
+    log "OPA policy verification complete"
+}
+
+# ============================================================================
 # Verification
 # ============================================================================
 verify_deployment() {
@@ -1367,7 +1450,7 @@ verify_deployment() {
     echo "============================================"
     echo "Pod Status:"
     echo "============================================"
-    kubectl get pods -A | grep -E 'litellm|open-webui|prometheus|redis|external-secrets|monitoring|jaeger'
+    kubectl get pods -A | grep -E 'litellm|open-webui|prometheus|redis|external-secrets|monitoring|jaeger|gatekeeper'
 
     echo ""
     echo "============================================"
@@ -1396,6 +1479,16 @@ verify_deployment() {
     echo "# Access Jaeger UI (Distributed Tracing):"
     echo "kubectl port-forward svc/jaeger-query 16686:16686 -n monitoring --address 0.0.0.0"
     echo "# Then open http://localhost:16686"
+    echo ""
+
+    echo "============================================"
+    echo "OPA Gatekeeper Status:"
+    echo "============================================"
+    echo "# View policy violations:"
+    echo "kubectl get constraints"
+    echo ""
+    echo "# View detailed violations for a constraint:"
+    echo "kubectl describe k8sallowedrepos allowed-image-repos"
     echo ""
 
     log "Deployment verification complete"
@@ -1450,6 +1543,15 @@ main() {
         openwebui)
             deploy_openwebui
             ;;
+        gatekeeper)
+            deploy_gatekeeper
+            ;;
+        opa-policies)
+            apply_opa_policies
+            ;;
+        opa-verify)
+            verify_opa_policies
+            ;;
         verify)
             verify_deployment
             ;;
@@ -1461,88 +1563,18 @@ main() {
             create_namespaces
             deploy_external_secrets
             create_secret_stores
+            deploy_gatekeeper
+            apply_opa_policies
             deploy_monitoring
             deploy_jaeger
             deploy_redis
             deploy_litellm
             deploy_openwebui
             verify_deployment
+            verify_opa_policies
             ;;
         *)
-            cat << 'EOF'
-Usage: ./deploy.sh [COMMAND]
-
-COMMANDS:
-    all                 Run complete deployment (default)
-    validate            Validate YAML files only
-    irsa                Create IRSA roles
-    secrets             Create AWS Secrets Manager secrets
-    helm-repos          Add Helm repositories
-    namespaces          Create Kubernetes namespaces
-    external-secrets    Deploy External Secrets Operator
-    monitoring          Deploy kube-prometheus-stack
-    dashboards          Deploy Grafana dashboards
-    jaeger              Deploy Jaeger tracing
-    redis               Deploy Redis HA
-    litellm             Deploy LiteLLM
-    openwebui           Deploy OpenWebUI
-    verify              Verify deployment status
-
-ENVIRONMENT VARIABLES:
-    INTERACTIVE_MODE     Enable/disable interactive prompts (default: true)
-                         Set to 'false' for non-interactive CI/CD pipelines
-
-    AUTO_SKIP_HEALTHY    Auto-skip all healthy existing resources (default: false)
-                         Useful for quick re-deployments when everything is working
-
-    SKIP_ALL             Non-interactive mode: skip all existing resources (default: false)
-                         Use in CI/CD to avoid any prompts
-
-    AWS_REGION           AWS region (default: us-east-1)
-    AWS_ACCOUNT_ID       AWS account ID (auto-detected if not set)
-    EKS_CLUSTER_NAME     EKS cluster name (default: my-eks-cluster)
-    OIDC_PROVIDER        OIDC provider URL (auto-detected if not set)
-
-EXAMPLES:
-    # Interactive deployment (default behavior)
-    ./deploy.sh all
-
-    # Auto-skip all healthy resources (fastest for re-deployments)
-    AUTO_SKIP_HEALTHY=true ./deploy.sh all
-
-    # Non-interactive mode for CI/CD (no prompts)
-    INTERACTIVE_MODE=false ./deploy.sh all
-
-    # Skip all existing resources in CI/CD
-    SKIP_ALL=true ./deploy.sh all
-
-    # Deploy only specific components
-    ./deploy.sh irsa
-    ./deploy.sh secrets
-    ./deploy.sh litellm
-
-    # Deploy with custom region and cluster
-    AWS_REGION=us-west-2 EKS_CLUSTER_NAME=prod-cluster ./deploy.sh all
-
-INTERACTIVE MODE:
-    When resources already exist, you'll be prompted with options:
-    [S] Skip      - Skip this resource (safest, default choice)
-    [P] Proceed   - Update/redeploy the resource
-    [V] View      - Show detailed resource information
-    [A] Auto      - Auto-skip all remaining healthy resources
-    [Q] Quit      - Exit the deployment
-
-SAFETY FEATURES:
-    - Default action is always Skip (safest option)
-    - Double confirmation required for destructive operations
-    - Dependency validation prevents broken deployments
-    - Salt-key cannot be regenerated (prevents data corruption)
-    - Master-key regeneration requires confirmation (breaks API keys)
-
-For more information, see:
-    - DEPENDENCY_GRAPH.md - Full dependency rules and validation
-    - todo.md - Implementation details and design decisions
-EOF
+            echo "Usage: $0 {validate|all|irsa|secrets|helm-repos|namespaces|external-secrets|monitoring|dashboards|jaeger|redis|litellm|openwebui|gatekeeper|opa-policies|opa-verify|verify}"
             exit 1
             ;;
     esac

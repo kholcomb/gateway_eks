@@ -1,0 +1,67 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblocklatesttag
+  annotations:
+    description: >-
+      Blocks the use of 'latest' tag or untagged images.
+      Ensures reproducible deployments with pinned versions.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockLatestTag
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptImages:
+              description: List of images to exempt from this policy (supports glob patterns)
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblocklatesttag
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+          has_latest_tag(container.image)
+          msg := sprintf("Container '%v' uses image '%v' with 'latest' tag or no tag. Use a specific version tag.", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not is_exempt(container.image)
+          has_latest_tag(container.image)
+          msg := sprintf("Init container '%v' uses image '%v' with 'latest' tag or no tag. Use a specific version tag.", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not is_exempt(container.image)
+          has_latest_tag(container.image)
+          msg := sprintf("Ephemeral container '%v' uses image '%v' with 'latest' tag or no tag. Use a specific version tag.", [container.name, container.image])
+        }
+
+        # Image has :latest tag
+        has_latest_tag(image) {
+          endswith(image, ":latest")
+        }
+
+        # Image has no tag at all (no colon, or colon is part of port)
+        has_latest_tag(image) {
+          not contains(image, ":")
+        }
+
+        # Image has digest but also :latest
+        has_latest_tag(image) {
+          contains(image, ":latest@")
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }

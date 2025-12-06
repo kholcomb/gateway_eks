@@ -292,12 +292,7 @@ resource "aws_eks_node_group" "main" {
   ]
 
   lifecycle {
-    # Ignore changes to desired_size (managed by autoscaling/manual changes)
-    # Ignore changes to version (allow in-place upgrades outside of Terraform)
-    ignore_changes = [
-      scaling_config[0].desired_size,
-      version
-    ]
+    ignore_changes = [scaling_config[0].desired_size]
   }
 }
 
