@@ -5,7 +5,7 @@
 # Pin image version for stability
 image:
   repository: redis
-  tag: "7.4.1-alpine"
+  tag: "8.4.0-alpine"
 
 # Number of redis master/slave pods
 replicas: 3
