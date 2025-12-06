@@ -6,28 +6,33 @@ Configure secure TLS connections to Redis for LiteLLM caching and distributed st
 
 ## Key Features
 
-- **TLS/SSL Encryption**: Secure Redis connections
-- **Certificate Authentication**: mTLS support for client certificates
+- **TLS/SSL Encryption**: Secure Redis connections for in-cluster deployments
 - **Redis Cluster Support**: TLS with Redis Cluster deployments
 - **Redis Sentinel Support**: TLS with high-availability Sentinel setups
-- **GCP IAM Authentication**: Managed Redis with IAM
+- **Service Mesh Ready**: Compatible with future Istio/Linkerd integration
+- **Advanced mTLS**: Client certificate authentication for external Redis (optional)
 
-## Required Actions
+## Required Actions (In-Cluster Basic TLS)
 
-- [ ] Obtain or generate TLS certificates for Redis
-- [ ] Create Kubernetes Secret for Redis TLS certificates
 - [ ] Configure Redis server with TLS enabled
-- [ ] Update LiteLLM config with Redis TLS parameters
-- [ ] Set `ssl: true` in Redis connection settings
-- [ ] Configure certificate paths if using mTLS
+- [ ] Update LiteLLM config with `ssl: true` in Redis connection settings
 - [ ] Test TLS connection with `/cache/ping` endpoint
-- [ ] Verify certificate chain and expiration monitoring
-- [ ] Set up certificate rotation procedures
+- [ ] Verify Redis server certificate validity
 - [ ] Configure Redis Sentinel/Cluster TLS if applicable
 
-## Configuration Example
+## Optional Actions (External Redis with mTLS)
 
-### Basic Redis TLS
+- [ ] Obtain or generate TLS certificates for Redis client authentication
+- [ ] Create Kubernetes Secret for Redis TLS certificates
+- [ ] Configure certificate paths (ssl_certfile, ssl_keyfile, ssl_ca_certs)
+- [ ] Set up certificate rotation procedures
+- [ ] Verify certificate chain and expiration monitoring
+
+## Configuration Examples
+
+### Basic Redis TLS (Recommended for In-Cluster EKS)
+
+For Redis pods in the same namespace/cluster, basic TLS provides encryption in transit. When you add a service mesh (Istio/Linkerd), it will handle mutual authentication between pods automatically.
 
 ```yaml
 router_settings:
@@ -46,7 +51,9 @@ litellm_settings:
     ssl: true
 ```
 
-### Redis TLS with Certificates (mTLS)
+### Advanced: Redis TLS with Certificates (mTLS)
+
+For external/managed Redis services requiring client certificate authentication:
 
 ```yaml
 litellm_settings:
@@ -96,7 +103,19 @@ litellm_settings:
     ssl: true
 ```
 
-## Kubernetes Secret for TLS Certificates
+## Service Mesh Integration (Future)
+
+When implementing a service mesh (Istio/Linkerd/Consul), you'll get:
+- **Automatic mTLS** between LiteLLM and Redis pods
+- **Zero configuration** for mutual authentication within the mesh
+- **Centralized certificate management** via mesh control plane
+- **Observability** with encrypted traffic metrics
+
+The basic TLS configuration above remains compatible - the mesh will add an additional mTLS layer at the sidecar level.
+
+## Advanced: Kubernetes Secret for mTLS Certificates
+
+Only needed for external Redis requiring client certificates:
 
 ```yaml
 apiVersion: v1
@@ -110,7 +129,9 @@ data:
   client.key: <base64-encoded-client-key>
 ```
 
-## Volume Mount Configuration
+## Advanced: Volume Mount Configuration
+
+Only needed for external Redis requiring client certificates:
 
 ```yaml
 spec:
