@@ -1,41 +1,79 @@
 # LiteLLM + OpenWebUI EKS Deployment
 
-This directory contains all configuration files and scripts to deploy a complete AI/LLM infrastructure on AWS EKS.
+**Production-ready AI/LLM infrastructure on Amazon EKS** with comprehensive observability, security, and authentication.
+
+This repository provides everything you need to deploy a complete, enterprise-grade LLM proxy infrastructure featuring:
+
+- 🔐 **JWT Authentication** via Okta OIDC
+- 🤖 **Multi-Model Support** - Claude, Llama, Mistral via AWS Bedrock
+- 📊 **Full Observability** - Prometheus, Grafana, Jaeger tracing
+- 🔒 **Security First** - OPA Gatekeeper policies, IRSA, encrypted secrets
+- ⚡ **High Availability** - Redis HA, multi-replica deployments
+- 🛠️ **Extensible** - Support for Model Context Protocol (MCP) servers
+
+**Quick Links:**
+- 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Step-by-step walkthrough
+- 🚀 [Quick Start](#quick-start) - Get started in minutes
+- 🏗️ [Architecture](#architecture) - System design overview
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           AWS EKS Cluster                               │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────────────────────────┐│
-│  │  OpenWebUI  │──▶│   LiteLLM   │──▶│        Amazon Bedrock           ││
-│  │  (Frontend) │   │   (Proxy)   │   │   (Claude, Llama, Mistral)      ││
-│  └─────────────┘   └──────┬──────┘   └─────────────────────────────────┘│
-│                           │                                              │
-│  ┌────────────────────────┴────────────────────────────────────────────┐│
-│  │                    Observability Stack                               ││
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────────┐ ││
-│  │  │ Prometheus │◀─│  Metrics   │  │  Grafana   │  │  Alertmanager  │ ││
-│  │  │            │  │ (litellm)  │  │ Dashboards │  │                │ ││
-│  │  └────────────┘  └────────────┘  └─────┬──────┘  └────────────────┘ ││
-│  │                                        │                             ││
-│  │  ┌────────────┐  ┌────────────────────┐│                            ││
-│  │  │   Jaeger   │◀─│ OpenTelemetry      ││  (Distributed Tracing)     ││
-│  │  │   (OTLP)   │  │ Traces (litellm)   ││                            ││
-│  │  └────────────┘  └────────────────────┘│                            ││
-│  └─────────────────────────────────────────────────────────────────────┘│
-│                                                                          │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────────────┐ │
-│  │ External Secrets │  │      Redis       │  │     EC2 Bastion        │ │
-│  │    Operator      │  │    (caching)     │  │     (testing)          │ │
-│  └────────┬─────────┘  └──────────────────┘  └────────────────────────┘ │
-└───────────┼─────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────┐   ┌─────────────────────┐
-│  AWS Secrets Manager│   │     Amazon RDS      │
-│  (API keys, creds)  │   │    (PostgreSQL)     │
-└─────────────────────┘   └─────────────────────┘
+```mermaid
+graph TB
+    subgraph "External Services"
+        User[Users/Clients]
+        Bedrock[AWS Bedrock<br/>Claude, Llama, Mistral]
+        RDS[Amazon RDS<br/>PostgreSQL]
+        SecretsManager[AWS Secrets Manager<br/>API Keys & Credentials]
+        Bastion[EC2 Bastion<br/>Testing & Access]
+    end
+
+    subgraph "EKS Cluster"
+        subgraph "Application Layer"
+            OpenWebUI[OpenWebUI<br/>Chat Frontend]
+            LiteLLM[LiteLLM Proxy<br/>JWT Auth + Routing]
+            Redis[Redis HA<br/>Caching]
+        end
+
+        subgraph "Observability Stack"
+            Prometheus[Prometheus<br/>Metrics Collection]
+            Grafana[Grafana<br/>Dashboards]
+            Jaeger[Jaeger<br/>Distributed Tracing]
+            Alertmanager[Alertmanager<br/>Alerts]
+        end
+
+        subgraph "Security & Secrets"
+            ESO[External Secrets<br/>Operator]
+            OPA[OPA Gatekeeper<br/>Policy Enforcement]
+        end
+    end
+
+    User -->|HTTPS| OpenWebUI
+    OpenWebUI -->|API + JWT| LiteLLM
+    LiteLLM -->|Model Requests| Bedrock
+    LiteLLM -->|Cache| Redis
+    OpenWebUI -->|Session Data| RDS
+
+    LiteLLM -->|Metrics| Prometheus
+    LiteLLM -->|Traces| Jaeger
+    Prometheus -->|Visualize| Grafana
+    Prometheus -->|Alerts| Alertmanager
+
+    ESO -->|Sync Secrets| SecretsManager
+    ESO -.->|Provides| LiteLLM
+    ESO -.->|Provides| OpenWebUI
+
+    OPA -.->|Enforce Policies| LiteLLM
+    OPA -.->|Enforce Policies| OpenWebUI
+
+    Bastion -.->|kubectl/port-forward| OpenWebUI
+    Bastion -.->|kubectl/port-forward| Grafana
+
+    style LiteLLM fill:#326CE5,color:#fff
+    style OpenWebUI fill:#61DAFB
+    style Bedrock fill:#FF9900,color:#fff
+    style Prometheus fill:#E6522C,color:#fff
+    style Grafana fill:#F46800,color:#fff
 ```
 
 ## Components
@@ -53,37 +91,50 @@ This directory contains all configuration files and scripts to deploy a complete
 
 ```
 eks-deploy/
-├── eksctl/                          # eksctl configuration
+├── eksctl/                          # eksctl configuration (alternative to Terraform)
 │   ├── cluster.yaml                 # EKS cluster definition
 │   └── README.md                    # eksctl deployment guide
-├── terraform/                       # Terraform infrastructure
+├── terraform/                       # Terraform infrastructure (full IaC)
 │   ├── main.tf                      # Main Terraform config
-│   ├── modules/                     # Terraform modules
+│   ├── modules/                     # Reusable Terraform modules
+│   ├── environments/                # Environment-specific configs
 │   ├── terraform.tfvars.example     # Example configuration
 │   └── README.md                    # Terraform deployment guide
-├── helm-values/
-│   ├── litellm-values.yaml          # LiteLLM configuration (+ OpenTelemetry)
-│   ├── openwebui-values.yaml        # OpenWebUI configuration
-│   ├── redis-values.yaml            # Redis configuration
-│   ├── kube-prometheus-stack-values.yaml  # Prometheus/Grafana config
+├── docs/                            # Documentation
+│   ├── DEPLOYMENT_GUIDE.md          # Complete deployment walkthrough
+│   ├── JWT_AUTHENTICATION_SETUP.md  # Okta/JWT configuration
+│   ├── MCP_DEPLOYMENT.md            # Model Context Protocol servers
+│   └── mcp/examples/                # MCP server templates
+├── helm-values/                     # Helm chart configurations
+│   ├── litellm-values.yaml          # LiteLLM proxy (JWT, models, telemetry)
+│   ├── openwebui-values.yaml        # OpenWebUI frontend (Okta OIDC)
+│   ├── redis-values.yaml            # Redis HA cluster
+│   ├── kube-prometheus-stack-values.yaml  # Prometheus/Grafana/Alertmanager
 │   ├── jaeger-values.yaml           # Jaeger distributed tracing
-│   └── external-secrets-values.yaml # ESO configuration
-├── manifests/
-│   ├── namespaces.yaml              # Kubernetes namespaces
-│   ├── cluster-secret-store.yaml    # AWS Secrets Manager store
-│   ├── litellm-external-secret.yaml # LiteLLM + Redis secrets
-│   └── openwebui-external-secret.yaml # OpenWebUI secrets
+│   ├── external-secrets-values.yaml # External Secrets Operator
+│   └── gatekeeper-values.yaml       # OPA Gatekeeper policy engine
+├── manifests/                       # Kubernetes manifests
+│   ├── namespaces.yaml              # Namespace definitions
+│   ├── cluster-secret-store.yaml    # AWS Secrets Manager integration
+│   ├── litellm-external-secret.yaml # LiteLLM secrets sync
+│   ├── openwebui-external-secret.yaml # OpenWebUI secrets sync
+│   └── opa-policies/                # OPA Gatekeeper policies
+│       ├── templates/               # Policy templates
+│       ├── constraints/             # Policy constraints
+│       └── README.md                # Policy documentation
 ├── grafana_dashboards/
 │   └── litellm-prometheus.json      # LiteLLM metrics dashboard
-├── iam/
-│   ├── litellm-bedrock-policy.json  # Bedrock access policy
-│   ├── external-secrets-policy.json # Secrets Manager policy
+├── iam/                             # IAM policies for IRSA
+│   ├── litellm-bedrock-policy.json  # Bedrock model access
+│   ├── external-secrets-policy.json # Secrets Manager read access
 │   └── trust-policy-template.json   # IRSA trust policy template
-├── scripts/
-│   ├── deploy.sh                    # Main deployment script (Terraform/eksctl + apps)
-│   ├── setup-bastion.sh             # Bastion EC2 setup
-│   └── README.md                    # Deployment scripts guide
-├── DEPLOYMENT_OPTIONS.md            # Terraform vs eksctl comparison
+├── scripts/                         # Deployment automation
+│   ├── deploy.sh                    # Main deployment script (interactive)
+│   ├── setup-bastion.sh             # Bastion EC2 setup & access
+│   └── README.md                    # Script usage guide
+├── security/
+│   └── ARCHITECTURE.md              # Security architecture details
+├── CONTRIBUTING.md                  # Git workflow and contribution guide
 └── README.md                        # This file
 ```
 
@@ -175,13 +226,28 @@ This deploys everything: infrastructure + applications in one command.
 |---------|--------|-----------|
 | **Setup Time** | 15-20 min | 25-35 min |
 | **Configuration** | Simple YAML | Multiple .tf files |
-| **VPC & Networking** | ✅ Auto-created | ✅ Custom config |
+| **Complexity** | Low - Single file | Medium - Multiple files |
+| **VPC & Networking** | ✅ Auto-created | ✅ Custom control |
 | **EKS Cluster** | ✅ Full support | ✅ Full support |
+| **Node Groups** | ✅ Included | ✅ Included |
 | **RDS Database** | ❌ Bring your own | ✅ Included |
 | **Secrets Manager** | ⚠️ Manual setup | ✅ Automated |
+| **State Management** | N/A | ✅ S3 backend |
+| **Infrastructure as Code** | Partial | ✅ Complete |
 | **Best For** | Dev/Testing | Production |
+| **Cost** | Lower (fewer resources) | Higher (full stack) |
 
-See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed comparison.
+**Choose eksctl if:**
+- You need a quick development/testing environment
+- You already have a database solution
+- You prefer simpler configuration
+- You're learning Kubernetes/EKS
+
+**Choose Terraform if:**
+- You need production-ready infrastructure
+- You want complete infrastructure management
+- You need RDS database provisioning
+- You require infrastructure versioning and state management
 
 ### 5. Set Up Bastion for Testing
 
@@ -517,10 +583,20 @@ kubectl get sa litellm-sa -n litellm -o yaml
 
 ## Documentation
 
-- **[DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md)** - Detailed comparison of Terraform vs eksctl
-- **[scripts/README.md](scripts/README.md)** - Deployment script documentation
-- **[eksctl/README.md](eksctl/README.md)** - eksctl configuration guide
-- **[terraform/README.md](terraform/README.md)** - Terraform configuration guide
+### Getting Started
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Complete step-by-step deployment walkthrough
+- **[scripts/README.md](scripts/README.md)** - Deployment script usage and options
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Git workflow and contribution guidelines
+
+### Infrastructure Options
+- **[eksctl/README.md](eksctl/README.md)** - eksctl deployment guide (quick setup)
+- **[terraform/README.md](terraform/README.md)** - Terraform deployment guide (production)
+
+### Advanced Features
+- **[MCP_DEPLOYMENT.md](docs/MCP_DEPLOYMENT.md)** - Deploy Model Context Protocol servers
+- **[JWT_AUTHENTICATION_SETUP.md](docs/JWT_AUTHENTICATION_SETUP.md)** - Okta/JWT authentication setup
+- **[OPA Policies](manifests/opa-policies/README.md)** - Security policy documentation
+- **[Security Architecture](security/ARCHITECTURE.md)** - Security design and best practices
 
 ## Common Workflows
 
@@ -553,9 +629,33 @@ kubectl get sa litellm-sa -n litellm -o yaml
 
 ## Future Enhancements
 
-- Configure Alertmanager with Slack/PagerDuty
-- Add network policies for pod-to-pod security
-- Configure HPA for auto-scaling LiteLLM
-- Add Loki for log aggregation
-- Add Grafana Tempo for long-term trace storage (Jaeger uses in-memory by default)
-- Consider service mesh (Istio/Linkerd) for mTLS and advanced traffic management
+### Observability
+- [ ] **Loki Integration** - Centralized log aggregation and querying
+- [ ] **Grafana Tempo** - Long-term trace storage (Jaeger currently uses in-memory)
+- [ ] **Alertmanager Integration** - Slack/PagerDuty notifications for critical alerts
+- [ ] **Custom Dashboards** - Additional Grafana dashboards for business metrics
+
+### Scalability & Performance
+- [ ] **Horizontal Pod Autoscaling** - Auto-scale LiteLLM based on CPU/memory/custom metrics
+- [ ] **Cluster Autoscaler** - Auto-scale EKS nodes based on demand
+- [ ] **Multi-AZ Redis** - Distribute Redis across availability zones
+- [ ] **CDN Integration** - CloudFront for static asset delivery
+
+### Security
+- [ ] **Network Policies** - Fine-grained pod-to-pod network security
+- [ ] **Service Mesh** - Istio/Linkerd for mTLS and advanced traffic management
+- [ ] **WAF Integration** - AWS WAF for application-layer protection
+- [ ] **Secrets Rotation** - Automated secret rotation via AWS Secrets Manager
+- [ ] **Pod Security Standards** - Enforce restricted security policies
+
+### Developer Experience
+- [ ] **GitOps** - ArgoCD or FluxCD for declarative deployments
+- [ ] **CI/CD Pipeline** - GitHub Actions workflows for automated deployments
+- [ ] **Local Development** - Kind/minikube setup for local testing
+- [ ] **Staging Environment** - Separate environment for pre-production testing
+
+### Features
+- [ ] **Multi-Region Deployment** - Active-active or active-passive regional setup
+- [ ] **Rate Limiting** - Per-user/per-model rate limiting
+- [ ] **Cost Tracking** - Enhanced cost allocation and budgeting
+- [ ] **Model Fine-tuning** - Integration with SageMaker for custom models

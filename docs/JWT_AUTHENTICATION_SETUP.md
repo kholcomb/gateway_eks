@@ -6,27 +6,33 @@ This deployment implements **client-agnostic authentication** where users authen
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ User authenticates with Okta                                 │
-│ Receives JWT token: {sub, email, groups, exp, ...}         │
-└────────────┬────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Client (OpenWebUI, Mobile, CLI, etc.)                       │
-│ Passes: Authorization: Bearer <user-okta-jwt-token>        │
-└────────────┬────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ LiteLLM Proxy (API Gateway)                                 │
-│ 1. Validates JWT signature using Okta public keys          │
-│ 2. Extracts user claims (email, groups, sub)               │
-│ 3. Enforces permissions based on groups                    │
-│ 4. Logs request with full user context                     │
-│ 5. Routes to AWS Bedrock (Claude, Llama, etc.)            │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    actor User
+    participant Okta as Okta OIDC
+    participant Client as Client<br/>(OpenWebUI, Mobile, CLI)
+    participant LiteLLM as LiteLLM Proxy<br/>(API Gateway)
+    participant Bedrock as AWS Bedrock<br/>(Claude, Llama, etc.)
+
+    User->>Okta: 1. Authenticate (username/password)
+    Okta->>User: 2. JWT Token<br/>{sub, email, groups, exp, ...}
+    User->>Client: 3. Use application
+    Client->>LiteLLM: 4. API Request<br/>Authorization: Bearer <jwt-token>
+
+    rect rgb(240, 240, 255)
+        Note over LiteLLM: JWT Validation Process
+        LiteLLM->>Okta: 5. Fetch public keys (JWKS)
+        Okta->>LiteLLM: 6. Public keys
+        LiteLLM->>LiteLLM: 7. Validate signature
+        LiteLLM->>LiteLLM: 8. Extract claims<br/>(email, groups, sub)
+        LiteLLM->>LiteLLM: 9. Enforce permissions<br/>(group-based RBAC)
+        LiteLLM->>LiteLLM: 10. Log request<br/>(user context)
+    end
+
+    LiteLLM->>Bedrock: 11. Model request<br/>(with user context)
+    Bedrock->>LiteLLM: 12. Model response
+    LiteLLM->>Client: 13. API response
+    Client->>User: 14. Display result
 ```
 
 ## Benefits

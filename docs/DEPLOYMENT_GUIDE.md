@@ -2,22 +2,51 @@
 
 ## Overview
 
-This guide walks you through deploying a production-ready LiteLLM proxy with OpenWebUI frontend, featuring:
+This guide walks you through deploying a production-ready LiteLLM proxy with OpenWebUI frontend on Amazon EKS, featuring:
 
 - **JWT Authentication**: Client-agnostic authentication via Okta OIDC
 - **AWS Bedrock Integration**: Access to Claude, Llama, and other models
 - **High Availability**: Redis HA, multi-replica deployments
-- **Observability**: Prometheus, Grafana, Jaeger tracing
+- **Observability**: Prometheus, Grafana, Jaeger distributed tracing
 - **Security**: OPA Gatekeeper policies, IRSA, encrypted secrets
+- **MCP Server Support**: Deploy Model Context Protocol servers for extended AI capabilities
+
+> **Note**: This guide focuses on application deployment. For infrastructure setup (EKS cluster, VPC, RDS), see the [main README](../README.md) for choosing between Terraform and eksctl deployment options.
 
 ## Architecture
 
-```
-User → Okta (Authentication) → OpenWebUI → LiteLLM (JWT Validation) → AWS Bedrock
-                                   ↓           ↓
-                              PostgreSQL    Redis HA
-                                   ↓
-                          Prometheus/Grafana (Monitoring)
+```mermaid
+graph TB
+    User[User] -->|Authenticates| Okta[Okta OIDC]
+    Okta -->|JWT Token| OpenWebUI[OpenWebUI Frontend]
+    OpenWebUI -->|API Requests + JWT| LiteLLM[LiteLLM Proxy]
+    LiteLLM -->|Validates JWT| Okta
+    LiteLLM -->|Model Requests| Bedrock[AWS Bedrock<br/>Claude, Llama, Mistral]
+    LiteLLM -->|Caching| Redis[Redis HA Cluster]
+    LiteLLM -->|Metrics| Prometheus[Prometheus]
+    LiteLLM -->|Traces| Jaeger[Jaeger]
+    OpenWebUI -->|Session Data| PostgreSQL[PostgreSQL RDS]
+    Prometheus -->|Visualization| Grafana[Grafana Dashboards]
+
+    subgraph "EKS Cluster"
+        OpenWebUI
+        LiteLLM
+        Redis
+        Prometheus
+        Grafana
+        Jaeger
+    end
+
+    subgraph "AWS Services"
+        Bedrock
+        PostgreSQL
+        Okta
+    end
+
+    style LiteLLM fill:#326CE5
+    style OpenWebUI fill:#61DAFB
+    style Bedrock fill:#FF9900
+    style Okta fill:#007DC1
 ```
 
 ## Prerequisites
@@ -26,11 +55,11 @@ User → Okta (Authentication) → OpenWebUI → LiteLLM (JWT Validation) → AW
 
 The following must be deployed before running this deployment:
 
-- EKS cluster (via Terraform in `/terraform`)
-- PostgreSQL database (RDS or external)
-- VPC with private subnets
-- Bastion host for kubectl access
-- AWS Secrets Manager enabled
+- **EKS cluster** (via Terraform or eksctl - see [README.md](../README.md))
+- **PostgreSQL database** (RDS from Terraform, or external)
+- **VPC with private subnets** (created by infrastructure deployment)
+- **AWS Secrets Manager** enabled in your region
+- (Optional) **Bastion host** for kubectl access and testing
 
 ### 2. Local Tools
 
@@ -38,29 +67,48 @@ Install required CLI tools:
 
 ```bash
 # macOS
-brew install awscli kubectl helm eksctl
+brew install awscli kubectl helm
 
 # Linux
 # Follow official installation guides for each tool
 ```
 
+Verify installations:
+```bash
+aws --version      # AWS CLI 2.x
+kubectl version    # v1.28+
+helm version       # v3.0+
+```
+
 ### 3. AWS Credentials
+
+Configure AWS CLI and verify access:
 
 ```bash
 aws configure
-aws sts get-caller-identity  # Verify credentials work
+aws sts get-caller-identity  # Should show your account ID
+aws eks list-clusters --region us-east-1  # Verify EKS access
 ```
 
 ### 4. kubectl Configuration
 
+Connect to your EKS cluster:
+
 ```bash
 aws eks update-kubeconfig --name <your-cluster-name> --region <region>
 kubectl cluster-info  # Verify connection
+kubectl get nodes    # Should show your EKS nodes
 ```
 
-### 5. Okta Setup
+### 5. Okta Setup (for JWT Authentication)
 
 You need an Okta organization and OIDC application configured. See [JWT_AUTHENTICATION_SETUP.md](./JWT_AUTHENTICATION_SETUP.md) for detailed Okta configuration steps.
+
+**Required Okta information:**
+- Okta domain (e.g., `dev-123456.okta.com`)
+- JWKS endpoint URL
+- Client ID and Client Secret
+- Callback URL configuration
 
 ---
 
@@ -68,13 +116,15 @@ You need an Okta organization and OIDC application configured. See [JWT_AUTHENTI
 
 ### Step 1: Configure Environment
 
-Edit `scripts/deploy.sh` and set your values:
+Set environment variables (the deployment script will auto-detect if not set):
 
 ```bash
 export AWS_REGION="us-east-1"
-export AWS_ACCOUNT_ID="123456789012"  # Or leave empty to auto-detect
 export EKS_CLUSTER_NAME="my-eks-cluster"
+# AWS_ACCOUNT_ID will be auto-detected if not set
 ```
+
+> **Tip**: The deployment script runs in **interactive mode** by default. It will prompt you before deploying resources that already exist, allowing you to skip, proceed, or view details. To disable prompts, set `INTERACTIVE_MODE=false`.
 
 ### Step 2: Create AWS Secrets Manually
 
@@ -545,6 +595,45 @@ View distributed traces for:
 
 ---
 
+## MCP Server Deployment (Optional)
+
+**Model Context Protocol (MCP)** servers extend LiteLLM's capabilities by providing tools and integrations to AI models. MCP servers enable:
+
+- **External data access**: GitHub repositories, S3 buckets, databases
+- **System operations**: CLI commands, Docker containers, file systems
+- **Third-party integrations**: Slack, Jira, email services
+
+### Quick Start
+
+See the complete guide at [docs/MCP_DEPLOYMENT.md](./MCP_DEPLOYMENT.md) for detailed instructions.
+
+**Example: Deploy a GitHub MCP Server**
+
+```bash
+# 1. Create IAM role for GitHub access (if needed)
+# 2. Deploy MCP server to EKS
+kubectl apply -f docs/mcp/examples/github-mcp-server.yaml
+
+# 3. Verify deployment
+kubectl get pods -n mcp-servers
+kubectl logs -n mcp-servers -l app=github-mcp-server
+```
+
+### Key Requirements
+
+- **Security**: Comply with OPA Gatekeeper policies (no :latest tags, resource limits, non-root)
+- **Networking**: Use ClusterIP services (internal cluster access only)
+- **Observability**: Integrate with Prometheus/Jaeger monitoring
+- **Secrets**: Use External Secrets Operator for sensitive data
+
+See [MCP_DEPLOYMENT.md](./MCP_DEPLOYMENT.md) for:
+- Complete annotated deployment example
+- Security best practices
+- IRSA configuration
+- Monitoring integration
+
+---
+
 ## Cost Optimization
 
 ### 1. Right-Size Resources
@@ -601,13 +690,51 @@ Use appropriate models for each use case:
 
 ---
 
+## Deployment Modes
+
+### Interactive Mode (Default)
+
+The deployment script runs in interactive mode by default, prompting before deploying resources that already exist:
+
+```bash
+./deploy.sh all
+# You'll see prompts like:
+# [S] Skip - Skip this step (recommended if resource is healthy)
+# [P] Proceed - Run deployment anyway (may update existing resource)
+# [V] View - Show resource details
+# [A] Auto - Auto-skip all remaining healthy resources
+# [Q] Quit - Exit deployment
+```
+
+### Non-Interactive Mode
+
+For CI/CD pipelines or automated deployments:
+
+```bash
+# Skip all existing resources automatically
+INTERACTIVE_MODE=false SKIP_ALL=true ./deploy.sh all
+
+# Proceed with all deployments (update existing)
+INTERACTIVE_MODE=false ./deploy.sh all
+```
+
+---
+
 ## Additional Resources
 
+### Documentation
+- [Main README](../README.md) - Infrastructure deployment options (Terraform vs eksctl)
 - [JWT Authentication Setup Guide](./JWT_AUTHENTICATION_SETUP.md) - Detailed Okta configuration
-- [LiteLLM Documentation](https://docs.litellm.ai/)
-- [OpenWebUI Documentation](https://docs.openwebui.com/)
-- [AWS Bedrock Models](https://aws.amazon.com/bedrock/claude/)
-- [OPA Gatekeeper Docs](https://open-policy-agent.github.io/gatekeeper/)
+- [MCP Deployment Guide](./MCP_DEPLOYMENT.md) - Deploy Model Context Protocol servers
+- [OPA Policies README](../manifests/opa-policies/README.md) - Security policy details
+- [Scripts README](../scripts/README.md) - Deployment script documentation
+
+### External Resources
+- [LiteLLM Documentation](https://docs.litellm.ai/) - LiteLLM proxy features and configuration
+- [OpenWebUI Documentation](https://docs.openwebui.com/) - OpenWebUI setup and customization
+- [AWS Bedrock Models](https://aws.amazon.com/bedrock/claude/) - Available models and pricing
+- [OPA Gatekeeper](https://open-policy-agent.github.io/gatekeeper/) - Policy enforcement
+- [External Secrets Operator](https://external-secrets.io/) - Secret management
 
 ---
 
