@@ -397,6 +397,16 @@ Two IRSA roles are created:
 1. **litellm-bedrock-role** - Allows LiteLLM to invoke Bedrock models
 2. **external-secrets-role** - Allows ESO to read from Secrets Manager
 
+## MCP Server Deployment
+
+Model Context Protocol (MCP) servers can be deployed as in-cluster pods to provide tools and capabilities to AI models. MCP servers enable access to external data sources (GitHub, S3), system operations (CLI, Docker), and third-party APIs (Slack, Jira).
+
+See [docs/MCP_DEPLOYMENT.md](docs/MCP_DEPLOYMENT.md) for:
+- Deployment requirements and best practices
+- Complete annotated example (GitHub MCP server)
+- Security configuration (IRSA, secrets, network policies)
+- Monitoring integration (Prometheus, Jaeger)
+
 ## Accessing Services
 
 From the bastion instance:

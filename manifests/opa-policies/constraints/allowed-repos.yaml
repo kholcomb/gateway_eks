@@ -47,6 +47,9 @@ spec:
       - "public.ecr.aws/"
       # Pause container
       - "registry.k8s.io/"
+      # Customer ECR repositories (MCP servers and custom images)
+      # NOTE: Replace ACCOUNT_ID with your actual AWS account ID
+      - "ACCOUNT_ID.dkr.ecr."
     exemptImages:
       # AWS CNI and other EKS system images
       - "602401143452.dkr.ecr.*.amazonaws.com/*"

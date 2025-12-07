@@ -1,0 +1,414 @@
+# ============================================================================
+# MCP Server Deployment Template
+# ============================================================================
+# This is a complete, production-ready example for deploying a Model Context
+# Protocol (MCP) server as an in-cluster EKS pod.
+#
+# Example: GitHub MCP Server
+# Purpose: Provides GitHub repository and issue access tools to LiteLLM
+#
+# Customize this template for your specific MCP server by:
+# 1. Replace "mcp-github" with your server name
+# 2. Update image repository and tag
+# 3. Configure environment variables for your API
+# 4. Adjust resource limits based on expected load
+# 5. Update IRSA role ARN if AWS access needed
+# ============================================================================
+
+---
+# ============================================================================
+# Deployment: Main application workload
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-github
+  namespace: litellm  # Deploy in litellm namespace for simplicity
+  labels:
+    app.kubernetes.io/name: mcp-github
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: litellm-stack
+    # Optional: Add MCP-specific labels for organization
+    mcp.litellm.ai/type: external-saas
+    mcp.litellm.ai/transport: sse
+spec:
+  # ============================================================================
+  # High Availability: 2 replicas with anti-affinity
+  # ============================================================================
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-github
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-github
+        app.kubernetes.io/component: mcp-server
+      annotations:
+        # Prometheus scraping annotations (alternative to ServiceMonitor)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+
+    spec:
+      # ============================================================================
+      # Service Account: Required for IRSA (if AWS access needed)
+      # ============================================================================
+      serviceAccountName: mcp-github-sa
+
+      # ============================================================================
+      # Security Context: Pod-level security settings
+      # ============================================================================
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000    # Non-root user (required by OPA policy)
+        fsGroup: 1000      # File system group ownership
+
+      # ============================================================================
+      # Pod Anti-Affinity: Spread replicas across nodes for HA
+      # ============================================================================
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - mcp-github
+              topologyKey: kubernetes.io/hostname
+
+      # ============================================================================
+      # Container: Main application container
+      # ============================================================================
+      containers:
+      - name: mcp-github
+        # IMPORTANT: Must use an approved internal registry
+        # Do NOT use external registries (ghcr.io/external-org, docker.io/external-org)
+        # Build and push your MCP server image to your AWS ECR or approved registry
+        # Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-github:1.0.0
+        image: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/mcp-github:1.0.0
+        imagePullPolicy: IfNotPresent
+
+        # ============================================================================
+        # Ports: Expose HTTP port for service communication
+        # ============================================================================
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+        # ============================================================================
+        # Environment Variables: Configuration
+        # ============================================================================
+        env:
+        # --- MCP Server Configuration ---
+        - name: MCP_TRANSPORT
+          value: "sse"  # or "http" for HTTP transport
+
+        - name: MCP_SERVER_PORT
+          value: "8080"
+
+        - name: LOG_LEVEL
+          value: "info"
+
+        # --- GitHub API Credentials (from External Secret) ---
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mcp-github-secrets
+              key: github-token
+
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: mcp-github-secrets
+              key: github-app-id
+              optional: true  # If using GitHub App
+
+        - name: GITHUB_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mcp-github-secrets
+              key: github-private-key
+              optional: true  # If using GitHub App
+
+        # --- OpenTelemetry Tracing Configuration ---
+        # Send traces to existing Jaeger instance
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://jaeger-all-in-one.monitoring.svc.cluster.local:4318"
+
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+
+        - name: OTEL_SERVICE_NAME
+          value: "mcp-github"
+
+        - name: OTEL_TRACES_SAMPLER
+          value: "always_on"  # Sample all traces (adjust for production)
+
+        # --- Optional: Tool-specific configuration ---
+        - name: GITHUB_DEFAULT_ORG
+          value: "your-organization"
+
+        - name: MAX_SEARCH_RESULTS
+          value: "100"
+
+        # ============================================================================
+        # Resource Limits: Prevent resource exhaustion
+        # ============================================================================
+        resources:
+          requests:
+            cpu: "100m"       # Guaranteed CPU allocation
+            memory: "128Mi"   # Guaranteed memory allocation
+          limits:
+            cpu: "500m"       # Maximum CPU (throttled if exceeded)
+            memory: "512Mi"   # Maximum memory (OOMKilled if exceeded)
+
+        # ============================================================================
+        # Health Probes: Kubernetes health checks
+        # ============================================================================
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # ============================================================================
+        # Container Security Context: Container-level security settings
+        # ============================================================================
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true  # Prevent writes to container filesystem
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL  # Drop all Linux capabilities (required by OPA policy)
+
+        # ============================================================================
+        # Volume Mounts: Temporary storage for application
+        # ============================================================================
+        volumeMounts:
+        # Writable temp directory (since root filesystem is read-only)
+        - name: tmp
+          mountPath: /tmp
+
+        # Optional: Cache directory for API responses
+        - name: cache
+          mountPath: /app/cache
+
+      # ============================================================================
+      # Volumes: Ephemeral storage
+      # ============================================================================
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+      - name: cache
+        emptyDir: {}
+
+---
+# ============================================================================
+# Service: Internal ClusterIP service for pod discovery
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-github
+  namespace: litellm
+  labels:
+    app.kubernetes.io/name: mcp-github
+    app.kubernetes.io/component: mcp-server
+spec:
+  type: ClusterIP  # Internal only (no external exposure)
+
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+
+  selector:
+    app.kubernetes.io/name: mcp-github
+
+---
+# ============================================================================
+# ServiceAccount: Required for IRSA (IAM Roles for Service Accounts)
+# ============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-github-sa
+  namespace: litellm
+  annotations:
+    # IRSA: Annotate with IAM role ARN for AWS access
+    # Replace with your actual IAM role ARN (if AWS access needed)
+    # For GitHub MCP, this is typically not needed
+    # eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/mcp-github-role"
+
+---
+# ============================================================================
+# PodDisruptionBudget: Ensure at least 1 pod remains during disruptions
+# ============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-github
+  namespace: litellm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-github
+
+---
+# ============================================================================
+# ExternalSecret: Sync credentials from AWS Secrets Manager
+# ============================================================================
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: mcp-github-secrets
+  namespace: litellm
+spec:
+  # Refresh secrets every hour
+  refreshInterval: 1h
+
+  # Reference to ClusterSecretStore (already configured)
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+
+  # Target Kubernetes secret to create
+  target:
+    name: mcp-github-secrets
+    creationPolicy: Owner  # ESO owns and manages this secret
+
+  # Secret mappings from AWS Secrets Manager
+  data:
+  - secretKey: github-token
+    remoteRef:
+      key: mcp/github/token  # AWS Secrets Manager key
+
+  # Optional: GitHub App credentials
+  - secretKey: github-app-id
+    remoteRef:
+      key: mcp/github/app-id
+
+  - secretKey: github-private-key
+    remoteRef:
+      key: mcp/github/private-key
+
+---
+# ============================================================================
+# ServiceMonitor: Prometheus auto-discovery (optional but recommended)
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mcp-github
+  namespace: monitoring  # ServiceMonitors typically in monitoring namespace
+  labels:
+    release: kube-prometheus  # Required for Prometheus discovery
+spec:
+  # Select services in litellm namespace
+  namespaceSelector:
+    matchNames:
+    - litellm
+
+  # Select services with this label
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-github
+
+  # Scrape configuration
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# ============================================================================
+# ConfigMap: Tool-specific configuration (optional)
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-github-config
+  namespace: litellm
+data:
+  # Example: Allowed repositories for search
+  allowed-repos: |
+    your-org/repo1
+    your-org/repo2
+    your-org/repo3
+
+  # Example: Default search parameters
+  default-search-limit: "50"
+
+  # Example: Rate limiting
+  max-requests-per-minute: "60"
+
+---
+# ============================================================================
+# USAGE INSTRUCTIONS
+# ============================================================================
+#
+# 1. Create secrets in AWS Secrets Manager:
+#
+#    aws secretsmanager create-secret \
+#      --name mcp/github/token \
+#      --description "GitHub API token for MCP server" \
+#      --secret-string "ghp_xxxxxxxxxxxxxxxxxxxx" \
+#      --region us-east-1
+#
+# 2. Apply this manifest:
+#
+#    kubectl apply -f mcp-server-template.yaml
+#
+# 3. Verify deployment:
+#
+#    kubectl get pods -n litellm -l app.kubernetes.io/name=mcp-github
+#    kubectl logs -n litellm deployment/mcp-github
+#
+# 4. Test connectivity:
+#
+#    kubectl exec -n litellm deployment/litellm-proxy -- \
+#      curl http://mcp-github.litellm.svc.cluster.local:8080/health
+#
+# 5. Configure LiteLLM (in helm-values/litellm-values.yaml):
+#
+#    extraEnvVars:
+#      - name: MCP_GITHUB_ENDPOINT
+#        value: "http://mcp-github.litellm.svc.cluster.local:8080"
+#
+# 6. Verify metrics in Prometheus:
+#
+#    kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80
+#    # Open http://localhost:3000, search for "mcp_requests_total"
+#
+# 7. Verify traces in Jaeger:
+#
+#    kubectl port-forward -n monitoring svc/jaeger-query 16686:16686
+#    # Open http://localhost:16686, select service "mcp-github"
+#
+# ============================================================================
