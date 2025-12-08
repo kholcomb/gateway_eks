@@ -111,7 +111,7 @@ locals {
 
     # Configure kubectl for EKS
     mkdir -p /home/ec2-user/.kube
-    aws eks update-kubeconfig --name ${var.eks_cluster_name} --region ${data.aws_region.current.name} --kubeconfig /home/ec2-user/.kube/config
+    aws eks update-kubeconfig --name ${var.eks_cluster_name} --region ${data.aws_region.current.id} --kubeconfig /home/ec2-user/.kube/config
     chown -R ec2-user:ec2-user /home/ec2-user/.kube
 
     # Add kubectl aliases
