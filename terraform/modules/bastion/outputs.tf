@@ -27,5 +27,5 @@ output "iam_role_name" {
 
 output "ssm_connect_command" {
   description = "Command to connect to the bastion via SSM"
-  value       = var.create_bastion ? "aws ssm start-session --target ${aws_instance.bastion[0].id} --region ${data.aws_region.current.name}" : null
+  value       = var.create_bastion ? "aws ssm start-session --target ${aws_instance.bastion[0].id} --region ${data.aws_region.current.id}" : null
 }
