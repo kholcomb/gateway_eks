@@ -36,7 +36,7 @@ output "kms_key_id" {
 
 output "ecr_login_command" {
   description = "Command to authenticate Docker to ECR"
-  value       = "aws ecr get-login-password --region ${data.aws_region.current.name} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com"
+  value       = "aws ecr get-login-password --region ${data.aws_region.current.id} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.id}.amazonaws.com"
 }
 
 # Data sources for outputs

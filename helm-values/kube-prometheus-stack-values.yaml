@@ -8,11 +8,11 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
 
-    # Retention settings
-    retention: 15d
-    retentionSize: "10GB"
+    # Retention settings (PoC: reduced retention)
+    retention: 7d
+    retentionSize: "5GB"
 
-    # Storage - use EBS gp3
+    # Storage - use EBS gp3 (PoC: reduced size)
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -20,16 +20,16 @@ prometheus:
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
-              storage: 50Gi
+              storage: 20Gi
 
-    # Resource limits
+    # Resource limits (PoC: reduced resources)
     resources:
       requests:
-        cpu: "500m"
-        memory: "1Gi"
+        cpu: "200m"
+        memory: "512Mi"
       limits:
-        cpu: "2000m"
-        memory: "4Gi"
+        cpu: "1000m"
+        memory: "2Gi"
 
     # Scrape interval
     scrapeInterval: 30s
@@ -48,10 +48,10 @@ grafana:
   #   userKey: admin-user
   #   passwordKey: admin-password
 
-  # Persistence
+  # Persistence (PoC: reduced size)
   persistence:
     enabled: true
-    size: 10Gi
+    size: 5Gi
     storageClassName: gp3
 
   # Default datasources (auto-configured)
@@ -101,7 +101,7 @@ alertmanager:
   enabled: true
 
   alertmanagerSpec:
-    # Storage
+    # Storage (PoC: reduced size)
     storage:
       volumeClaimTemplate:
         spec:
@@ -109,7 +109,7 @@ alertmanager:
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
-              storage: 5Gi
+              storage: 2Gi
 
     # Resource limits
     resources:

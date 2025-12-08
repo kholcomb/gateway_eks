@@ -1,16 +1,6 @@
 # ECR Module for Container Registry
 # Creates private ECR repositories with security scanning, lifecycle policies, and encryption
 
-terraform {
-  required_version = ">= 1.5.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
-
 # -----------------------------------------------------------------------------
 # KMS Key for ECR Encryption
 # -----------------------------------------------------------------------------

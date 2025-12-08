@@ -66,7 +66,7 @@ variable "eks_cluster_version" {
 variable "eks_public_access" {
   description = "Enable public access to the EKS API endpoint"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "eks_public_access_cidrs" {
@@ -106,12 +106,12 @@ variable "eks_node_groups" {
   }))
   default = {
     default = {
-      instance_types = ["m6i.large", "m5.large"]
-      capacity_type  = "ON_DEMAND"
-      disk_size      = 100
-      desired_size   = 3
-      min_size       = 2
-      max_size       = 6
+      instance_types = ["t3a.medium", "t3.medium", "t2.medium"]
+      capacity_type  = "SPOT"
+      disk_size      = 50
+      desired_size   = 2
+      min_size       = 1
+      max_size       = 4
       labels         = {}
       taints         = []
     }
