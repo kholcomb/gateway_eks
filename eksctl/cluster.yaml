@@ -53,7 +53,7 @@ vpc:
   cidr: 10.0.0.0/16
   clusterEndpoints:
     privateAccess: true
-    publicAccess: true
+    publicAccess: false
   nat:
     gateway: HighlyAvailable  # Multiple NAT gateways for HA
 
