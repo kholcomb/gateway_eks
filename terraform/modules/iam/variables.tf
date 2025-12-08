@@ -84,6 +84,13 @@ variable "enable_aws_load_balancer_controller" {
   default     = false
 }
 
+# ECR Configuration
+variable "ecr_repository_arns" {
+  description = "List of ECR repository ARNs to allow access to"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)

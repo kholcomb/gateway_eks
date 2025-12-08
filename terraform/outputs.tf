@@ -146,6 +146,11 @@ output "aws_load_balancer_controller_role_arn" {
   value       = module.iam.aws_load_balancer_controller_role_arn
 }
 
+output "ecr_push_pull_policy_arn" {
+  description = "ARN of the ECR push/pull policy (attach to CI/CD IAM roles/users)"
+  value       = module.iam.ecr_push_pull_policy_arn
+}
+
 # -----------------------------------------------------------------------------
 # Kubectl Configuration
 # -----------------------------------------------------------------------------
@@ -191,4 +196,27 @@ output "aws_region" {
 output "aws_account_id" {
   description = "AWS account ID"
   value       = data.aws_caller_identity.current.account_id
+}
+
+# -----------------------------------------------------------------------------
+# ECR Outputs
+# -----------------------------------------------------------------------------
+output "ecr_repository_urls" {
+  description = "Map of ECR repository URLs"
+  value       = var.create_ecr_repositories ? module.ecr[0].repository_urls : {}
+}
+
+output "ecr_repository_arns" {
+  description = "Map of ECR repository ARNs"
+  value       = var.create_ecr_repositories ? module.ecr[0].repository_arns : {}
+}
+
+output "ecr_kms_key_arn" {
+  description = "ARN of the KMS key used for ECR encryption"
+  value       = var.create_ecr_repositories ? module.ecr[0].kms_key_arn : null
+}
+
+output "ecr_login_command" {
+  description = "Command to authenticate Docker to ECR"
+  value       = var.create_ecr_repositories ? module.ecr[0].ecr_login_command : null
 }
