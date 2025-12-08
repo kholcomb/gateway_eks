@@ -53,7 +53,7 @@ variable "max_allocated_storage" {
 variable "storage_type" {
   description = "Storage type (gp2, gp3, io1)"
   type        = string
-  default     = "gp3"
+  default     = "gp2"
 }
 
 variable "database_name" {

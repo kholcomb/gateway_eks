@@ -20,7 +20,7 @@ enable_vpc_flow_logs = false # Disable flow logs in dev to save costs
 # EKS Configuration (Cost Optimized)
 # -----------------------------------------------------------------------------
 eks_cluster_name    = "litellm-eks-dev"
-eks_cluster_version = "1.31"
+eks_cluster_version = "1.34"
 eks_public_access   = true
 
 # Restrict API access to specific IPs for security (replace with your IPs)

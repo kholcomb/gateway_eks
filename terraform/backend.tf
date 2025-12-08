@@ -13,18 +13,18 @@
 # -----------------------------------------------------------------------------
 # Use this for a single environment deployment (e.g., only production)
 
-# terraform {
-#   backend "s3" {
-#     bucket         = "my-terraform-state-bucket"           # CHANGE THIS
-#     key            = "litellm/terraform.tfstate"
-#     region         = "us-east-1"                           # CHANGE THIS
-#     encrypt        = true
-#     dynamodb_table = "terraform-state-locks"               # CHANGE THIS
+terraform {
+    backend "s3" {
+        bucket         = "my-terraform-state-bucket"           # CHANGE THIS
+        key            = "litellm/terraform.tfstate"
+        region         = "us-east-1"                           # CHANGE THIS
+        encrypt        = true
+#       dynamodb_table = "terraform-state-locks"               # CHANGE THIS
 #
 #     # Optional: Use KMS for encryption at rest
 #     # kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-#   }
-# }
+    }
+}
 
 # -----------------------------------------------------------------------------
 # Example 2: Multiple Environments with Workspaces
