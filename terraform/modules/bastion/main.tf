@@ -148,7 +148,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion.id, var.eks_node_security_group_id]
   iam_instance_profile   = aws_iam_instance_profile.bastion.name
 
-  user_data                   = base64encode(local.user_data)
+  user_data_base64                   = base64encode(local.user_data)
   user_data_replace_on_change = true
 
   # IMDSv2 required (security best practice)
