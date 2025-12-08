@@ -69,13 +69,6 @@ vpc:
 #         id: "subnet-xxxxx"
 #       us-east-1c:
 #         id: "subnet-xxxxx"
-#     public:
-#       us-east-1a:
-#         id: "subnet-xxxxx"
-#       us-east-1b:
-#         id: "subnet-xxxxx"
-#       us-east-1c:
-#         id: "subnet-xxxxx"
 
 # Managed Node Groups
 managedNodeGroups:
