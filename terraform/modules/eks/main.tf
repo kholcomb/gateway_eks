@@ -396,7 +396,7 @@ resource "aws_cloudwatch_log_group" "cluster" {
 # -----------------------------------------------------------------------------
 # Storage Class for GP3
 # -----------------------------------------------------------------------------
-resource "kubernetes_storage_class" "gp3" {
+resource "kubernetes_storage_class_v1" "gp3" {
   count = var.create_gp3_storage_class ? 1 : 0
 
   metadata {

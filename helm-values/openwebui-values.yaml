@@ -89,10 +89,10 @@ ollama:
 pipelines:
   enabled: false
 
-# Persistence on EBS with gp3 storage class
+# Persistence on EBS with gp3 storage class (PoC: reduced size)
 persistence:
   enabled: true
-  size: 10Gi
+  size: 5Gi
   storageClass: gp3
   accessModes:
     - ReadWriteOnce
@@ -106,14 +106,14 @@ service:
 ingress:
   enabled: false
 
-# Resource limits
+# Resource limits (PoC: reduced resources)
 resources:
   requests:
-    cpu: "250m"
-    memory: "512Mi"
+    cpu: "100m"
+    memory: "256Mi"
   limits:
-    cpu: "1000m"
-    memory: "2Gi"
+    cpu: "500m"
+    memory: "1Gi"
 
 # Liveness and readiness probes
 livenessProbe:

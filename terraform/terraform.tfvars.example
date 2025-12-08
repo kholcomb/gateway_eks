@@ -22,7 +22,7 @@ enable_vpc_flow_logs = true
 # -----------------------------------------------------------------------------
 eks_cluster_name    = "litellm-eks"
 eks_cluster_version = "1.34"
-eks_public_access   = true
+eks_public_access   = false
 
 # Restrict API access to specific CIDRs for security
 # eks_public_access_cidrs = ["your.ip.address/32"]
