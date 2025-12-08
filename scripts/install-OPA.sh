@@ -1,0 +1,2 @@
+kubectl create cluserterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=demo-admin
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
