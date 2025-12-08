@@ -53,7 +53,7 @@ vpc:
   cidr: 10.0.0.0/16
   clusterEndpoints:
     privateAccess: true
-    publicAccess: true
+    publicAccess: false
   nat:
     gateway: HighlyAvailable  # Multiple NAT gateways for HA
 
@@ -63,13 +63,6 @@ vpc:
 #   cidr: "10.0.0.0/16"
 #   subnets:
 #     private:
-#       us-east-1a:
-#         id: "subnet-xxxxx"
-#       us-east-1b:
-#         id: "subnet-xxxxx"
-#       us-east-1c:
-#         id: "subnet-xxxxx"
-#     public:
 #       us-east-1a:
 #         id: "subnet-xxxxx"
 #       us-east-1b:
