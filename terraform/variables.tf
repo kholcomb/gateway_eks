@@ -274,3 +274,56 @@ variable "bastion_instance_type" {
   type        = string
   default     = "t3.medium"
 }
+
+# -----------------------------------------------------------------------------
+# ECR Configuration
+# -----------------------------------------------------------------------------
+variable "create_ecr_repositories" {
+  description = "Create ECR repositories for container images"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_infrastructure_repository" {
+  description = "Infrastructure repository configuration (for litellm, openwebui, etc.)"
+  type = object({
+    name                    = string
+    tag_mutability          = string
+    lifecycle_tag_count     = number
+    lifecycle_untagged_days = number
+  })
+  default = {
+    name                    = "infrastructure"
+    tag_mutability          = "IMMUTABLE"
+    lifecycle_tag_count     = 20 # Keep more versions for infrastructure
+    lifecycle_untagged_days = 7
+  }
+}
+
+variable "ecr_deployments_repository" {
+  description = "Deployments repository configuration (for mcp-servers, custom apps, etc.)"
+  type = object({
+    name                    = string
+    tag_mutability          = string
+    lifecycle_tag_count     = number
+    lifecycle_untagged_days = number
+  })
+  default = {
+    name                    = "deployments"
+    tag_mutability          = "MUTABLE"
+    lifecycle_tag_count     = 10
+    lifecycle_untagged_days = 3 # More aggressive cleanup
+  }
+}
+
+variable "ecr_scan_on_push" {
+  description = "Enable image scanning on push to ECR"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_enable_encryption" {
+  description = "Enable KMS encryption for ECR repositories"
+  type        = bool
+  default     = true
+}

@@ -472,3 +472,48 @@ resource "aws_iam_policy" "aws_load_balancer_controller" {
 
   tags = var.tags
 }
+
+# -----------------------------------------------------------------------------
+# ECR Push/Pull Policy (for CI/CD and build processes)
+# -----------------------------------------------------------------------------
+resource "aws_iam_policy" "ecr_push_pull" {
+  count = length(var.ecr_repository_arns) > 0 ? 1 : 0
+
+  name        = "${var.name_prefix}-ecr-push-pull-policy"
+  description = "Policy for pushing and pulling images to/from ECR repositories"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECRRepositoryAccess"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:GetRepositoryPolicy"
+        ]
+        Resource = var.ecr_repository_arns
+      },
+      {
+        Sid    = "ECRAuthorizationToken"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+

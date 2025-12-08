@@ -193,6 +193,8 @@ module "iam" {
     module.secrets.kms_key_arn,
   ]
 
+  ecr_repository_arns = var.create_ecr_repositories ? values(module.ecr[0].repository_arns) : []
+
   enable_cluster_autoscaler           = var.enable_cluster_autoscaler
   enable_aws_load_balancer_controller = var.enable_aws_load_balancer_controller
 
@@ -220,4 +222,24 @@ module "bastion" {
   tags = local.common_tags
 
   depends_on = [module.eks]
+}
+
+# -----------------------------------------------------------------------------
+# ECR Module (Container Registry)
+# -----------------------------------------------------------------------------
+module "ecr" {
+  source = "./modules/ecr"
+
+  count = var.create_ecr_repositories ? 1 : 0
+
+  name_prefix       = local.name_prefix
+  scan_on_push      = var.ecr_scan_on_push
+  enable_encryption = var.ecr_enable_encryption
+
+  repositories = {
+    infrastructure = var.ecr_infrastructure_repository
+    deployments    = var.ecr_deployments_repository
+  }
+
+  tags = local.common_tags
 }

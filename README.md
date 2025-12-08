@@ -15,6 +15,7 @@ This repository provides everything you need to deploy a complete, enterprise-gr
 - 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Step-by-step walkthrough
 - 🚀 [Quick Start](#quick-start) - Get started in minutes
 - 🏗️ [Architecture](#architecture) - System design overview
+- 📦 [ECR Setup](docs/ECR_SETUP.md) - Container registry configuration
 
 ## Architecture
 
@@ -86,6 +87,7 @@ graph TB
 | kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | - | Metrics & alerting |
 | Jaeger | `jaegertracing/jaeger` | 1.53 | Distributed tracing |
 | External Secrets Operator | `external-secrets/external-secrets` | - | Secrets sync |
+| **ECR** | Terraform module | - | **Private container registry** |
 
 ## Directory Structure
 
@@ -593,6 +595,7 @@ kubectl get sa litellm-sa -n litellm -o yaml
 - **[terraform/README.md](terraform/README.md)** - Terraform deployment guide (production)
 
 ### Advanced Features
+- **[ECR_SETUP.md](docs/ECR_SETUP.md)** - Container registry setup and usage
 - **[MCP_DEPLOYMENT.md](docs/MCP_DEPLOYMENT.md)** - Deploy Model Context Protocol servers
 - **[JWT_AUTHENTICATION_SETUP.md](docs/JWT_AUTHENTICATION_SETUP.md)** - Okta/JWT authentication setup
 - **[OPA Policies](manifests/opa-policies/README.md)** - Security policy documentation
