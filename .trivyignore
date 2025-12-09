@@ -1,0 +1,11 @@
+# Trivy Ignore File
+# Add vulnerability IDs or checks to ignore here
+# Format: AVD-<TYPE>-<NUMBER> or CVE-XXXX-XXXXX
+#
+# Example:
+# AVD-AWS-0001  # Ignore specific AWS check
+# CVE-2021-12345  # Ignore specific CVE
+#
+# Documentation: https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/
+
+# Add exceptions below this line as needed
