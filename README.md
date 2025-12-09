@@ -2,15 +2,6 @@
 
 **Production-ready AI/LLM infrastructure on Amazon EKS** with comprehensive observability, security, and authentication.
 
-## Features
-
-- 🔐 **JWT Authentication** - Client-agnostic auth via Okta OIDC ([Setup Guide](docs/JWT_AUTHENTICATION_SETUP.md))
-- 🤖 **Multi-Model Support** - Claude, Llama, Mistral via AWS Bedrock
-- 📊 **Full Observability** - Prometheus, Grafana, Jaeger distributed tracing
-- 🔒 **Security First** - OPA Gatekeeper policies, IRSA, encrypted secrets
-- ⚡ **High Availability** - Redis HA, multi-replica deployments
-- 🛠️ **Extensible** - Support for Model Context Protocol (MCP) servers
-
 ## Quick Links
 
 | Guide | Description |
@@ -73,15 +64,15 @@ graph TB
 
 ## Components
 
-| Component | Version | Purpose |
-|-----------|---------|---------|
-| **LiteLLM** | v1.80.5-stable | API gateway to AWS Bedrock models |
-| **OpenWebUI** | latest | Chat frontend with Okta authentication |
-| **Redis HA** | 7.4-alpine | Caching & rate limiting |
-| **Prometheus/Grafana** | - | Metrics collection & visualization |
-| **Jaeger** | 1.53 | Distributed tracing |
-| **External Secrets** | - | AWS Secrets Manager integration |
-| **OPA Gatekeeper** | - | Policy enforcement |
+| Component | Purpose |
+|-----------|---------|
+| **LiteLLM** | API gateway to AWS Bedrock models |
+| **OpenWebUI** | Chat frontend with Okta authentication |
+| **Redis** | Caching |
+| **Prometheus/Grafana** | Metrics collection & visualization |
+| **Jaeger** | Distributed tracing |
+| **External Secrets** | AWS Secrets Manager integration |
+| **OPA Gatekeeper** |Policy enforcement |
 
 ---
 
@@ -102,16 +93,6 @@ aws --version      # AWS CLI 2.x
 kubectl version    # v1.28+
 helm version       # v3.0+
 ```
-
-### Infrastructure Deployment
-Choose **one** of these options:
-
-| Option | Time | Best For | Guide |
-|--------|------|----------|-------|
-| **eksctl** | 15-20 min | Dev/Testing | [eksctl/README.md](eksctl/README.md) |
-| **Terraform** | 25-35 min | Production | [terraform/README.md](terraform/README.md) |
-
-📖 **See [Deployment Comparison](docs/DEPLOYMENT_GUIDE.md#deployment-comparison)** for detailed feature comparison.
 
 ---
 
@@ -167,7 +148,7 @@ This deploys:
 - ✅ OPA Gatekeeper + policies
 - ✅ Prometheus/Grafana monitoring
 - ✅ Jaeger distributed tracing
-- ✅ Redis HA cluster
+- ✅ Redis cluster
 - ✅ LiteLLM proxy with JWT authentication
 - ✅ OpenWebUI with Okta OIDC
 
@@ -197,53 +178,6 @@ kubectl port-forward -n open-webui svc/open-webui 8080:80
 
 # Grafana (default: admin / prom-operator)
 kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80
-```
-
----
-
-## Directory Structure
-
-```
-eks-deploy/
-├── docs/                            # Documentation
-│   ├── DEPLOYMENT_GUIDE.md          # Complete deployment walkthrough
-│   ├── JWT_AUTHENTICATION_SETUP.md  # Okta/JWT configuration
-│   ├── ECR_SETUP.md                 # Container registry setup
-│   ├── MCP_DEPLOYMENT.md            # Model Context Protocol servers
-│   └── MCP_OPERATOR_ARCHITECTURE.md # MCP Kubernetes operator design
-├── eksctl/                          # eksctl cluster configuration
-│   ├── cluster.yaml                 # EKS cluster definition
-│   └── README.md                    # eksctl deployment guide
-├── terraform/                       # Terraform infrastructure
-│   ├── main.tf                      # Main configuration
-│   ├── modules/                     # Reusable modules
-│   └── README.md                    # Terraform deployment guide
-├── helm-values/                     # Helm chart configurations
-│   ├── litellm-values.yaml          # LiteLLM proxy
-│   ├── openwebui-values.yaml        # OpenWebUI frontend
-│   ├── redis-values.yaml            # Redis HA
-│   ├── kube-prometheus-stack-values.yaml
-│   ├── jaeger-values.yaml
-│   ├── external-secrets-values.yaml
-│   └── gatekeeper-values.yaml
-├── manifests/                       # Kubernetes manifests
-│   ├── namespaces.yaml
-│   ├── cluster-secret-store.yaml
-│   ├── litellm-external-secret.yaml
-│   ├── openwebui-external-secret.yaml
-│   └── opa-policies/                # OPA Gatekeeper policies
-├── scripts/                         # Deployment automation
-│   ├── deploy.sh                    # Main deployment script
-│   ├── setup-bastion.sh             # Bastion EC2 setup
-│   └── README.md                    # Script usage guide
-├── iam/                             # IAM policies for IRSA
-│   ├── litellm-bedrock-policy.json
-│   ├── external-secrets-policy.json
-│   └── trust-policy-template.json
-├── grafana_dashboards/
-│   └── litellm-prometheus.json
-└── security/
-    └── ARCHITECTURE.md              # Security architecture
 ```
 
 ---
@@ -287,18 +221,6 @@ The `deploy.sh` script supports granular deployment:
 
 ### LiteLLM Models
 
-Pre-configured AWS Bedrock models:
-
-| Model Name | Bedrock Model ID | Max Tokens |
-|------------|------------------|------------|
-| claude-3.5-sonnet | anthropic.claude-3-5-sonnet-20241022-v2:0 | 8192 |
-| claude-3-sonnet | anthropic.claude-3-sonnet-20240229-v1:0 | 4096 |
-| claude-3-haiku | anthropic.claude-3-haiku-20240307-v1:0 | 4096 |
-| claude-3-opus | anthropic.claude-3-opus-20240229-v1:0 | 4096 |
-| llama-3.1-70b | meta.llama3-1-70b-instruct-v1:0 | 2048 |
-| llama-3.1-8b | meta.llama3-1-8b-instruct-v1:0 | 2048 |
-| mistral-large | mistral.mistral-large-2407-v1:0 | 4096 |
-
 **Customize models:** Edit `helm-values/litellm-values.yaml`
 
 ### Required AWS Secrets
@@ -326,29 +248,13 @@ Pre-configured AWS Bedrock models:
 
 Access: `kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80`
 
-**Pre-installed dashboards:**
-- **LiteLLM Proxy** - Request rates, latency, token usage, costs
-- **Kubernetes Cluster** - Pod/node metrics
-- **Redis** - Cache hit rates, memory usage
-
-**Default credentials:** `admin` / `prom-operator`
-
 ### Prometheus Metrics
 
 Access: `kubectl port-forward -n monitoring svc/kube-prometheus-kube-prome-prometheus 9090:9090`
 
-**Key LiteLLM metrics:**
-- `litellm_proxy_total_requests_metric` - Total requests by model/user
-- `litellm_request_total_latency_metric` - Request latency (P50/P95/P99)
-- `litellm_total_tokens_metric` - Token usage
-- `litellm_spend_metric` - Cost tracking
-- `litellm_deployment_state` - Model health
-
 ### Jaeger Tracing
 
 Access: `kubectl port-forward -n monitoring svc/jaeger-query 16686:16686`
-
-View end-to-end request flows: OpenWebUI → LiteLLM → AWS Bedrock
 
 ---
 
@@ -356,24 +262,11 @@ View end-to-end request flows: OpenWebUI → LiteLLM → AWS Bedrock
 
 ### Model Context Protocol (MCP) Servers
 
-Deploy MCP servers to extend LiteLLM capabilities:
-
-- **External data access**: GitHub, S3, databases
-- **System operations**: CLI, Docker, file systems
-- **Third-party integrations**: Slack, Jira, email
-
 📖 **See [MCP Deployment Guide](docs/MCP_DEPLOYMENT.md)** for deployment patterns and examples.
 
 📖 **See [MCP Operator Architecture](docs/MCP_OPERATOR_ARCHITECTURE.md)** for Kubernetes operator design.
 
 ### Container Registry (ECR)
-
-Use AWS ECR for custom images:
-
-- **Infrastructure repository**: Immutable tags for core platform images
-- **Deployments repository**: Mutable tags for application workloads
-- **Automatic scanning**: Vulnerability detection on push
-- **KMS encryption**: At-rest encryption
 
 📖 **See [ECR Setup Guide](docs/ECR_SETUP.md)** for detailed configuration.
 
@@ -387,7 +280,7 @@ Security policies automatically enforced:
 - ✅ Non-root containers only
 - ✅ Required labels and probes
 
-View policies: `manifests/opa-policies/`
+[View policies](/manifests/opa-policies/)
 
 ---
 
@@ -408,29 +301,6 @@ kubectl logs -n litellm -l app.kubernetes.io/name=litellm --tail=100
 
 # Check OpenWebUI logs
 kubectl logs -n open-webui -l app.kubernetes.io/name=open-webui --tail=100
-```
-
-### Common Issues
-
-**Secrets not syncing**
-```bash
-kubectl describe externalsecret -n litellm litellm-secrets
-kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets
-```
-
-**JWT validation fails**
-```bash
-# Verify JWT public key URL
-kubectl get secret litellm-secrets -n litellm -o jsonpath='{.data.jwt-public-key-url}' | base64 -d
-
-# Test Okta JWKS endpoint
-curl https://<your-okta-domain>/oauth2/default/v1/keys
-```
-
-**Pods stuck in Pending**
-```bash
-kubectl describe pod <pod-name> -n <namespace>
-kubectl top nodes  # Check capacity
 ```
 
 📖 **See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#troubleshooting)** for comprehensive troubleshooting.
