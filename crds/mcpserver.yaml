@@ -54,6 +54,116 @@ spec:
                     - internal-api
 
                 # ============================================================================
+                # Workload Classification
+                # ============================================================================
+                classification:
+                  description: Workload classification for scheduling, security, and discovery
+                  type: object
+                  required:
+                    - trustBoundary
+                    - dataClassification
+                    - workloadProfile
+                  properties:
+                    trustBoundary:
+                      description: 'Security trust boundary for network policies'
+                      type: string
+                      enum:
+                        - internet-facing  # Public internet access (e.g., GitHub API, public SaaS)
+                        - internal-only    # VPC-only, no internet (e.g., internal DBs, AWS services)
+                        - isolated         # Strict isolation, no cross-namespace (sensitive ops)
+                      default: internal-only
+
+                    dataClassification:
+                      description: 'Highest classification of data handled'
+                      type: string
+                      enum:
+                        - public           # No sensitive data
+                        - internal         # Company internal data
+                        - confidential     # Sensitive business data
+                        - restricted       # PII, credentials, highly sensitive
+                      default: internal
+
+                    workloadProfile:
+                      description: 'Expected compute/resource profile'
+                      type: string
+                      enum:
+                        - lightweight      # Simple tools, minimal compute (calculator, time)
+                        - standard         # Typical API calls, moderate compute
+                        - compute-heavy    # CPU-intensive (code analysis, compilation)
+                        - memory-heavy     # Large context/caching (RAG, embeddings)
+                        - io-intensive     # Database/storage operations
+                        - gpu-required     # ML inference, specialized compute
+                      default: standard
+
+                    priority:
+                      description: 'Workload priority for scheduling and preemption'
+                      type: string
+                      enum:
+                        - low              # Dev/test, can be preempted
+                        - normal           # Standard production
+                        - high             # Business-critical
+                        - critical         # Infrastructure-critical, never preempted
+                      default: normal
+
+                    capabilities:
+                      description: 'Functional capabilities provided by this MCP server (for discovery and policy)'
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          # Data Access
+                          - database-read
+                          - database-write
+                          - file-storage-read
+                          - file-storage-write
+                          - cache-access
+
+                          # External Services
+                          - external-api
+                          - saas-integration
+                          - payment-processing
+                          - email-sending
+                          - notification
+
+                          # Computation
+                          - code-execution
+                          - code-generation
+                          - code-analysis
+                          - mathematical-computation
+                          - data-transformation
+
+                          # AI/ML
+                          - embedding-generation
+                          - vector-search
+                          - ml-inference
+                          - rag
+
+                          # Security & Auth
+                          - authentication
+                          - authorization
+                          - secret-management
+                          - credential-access
+
+                          # Observability
+                          - logging
+                          - metrics
+                          - tracing
+                          - analytics
+
+                          # Content
+                          - web-scraping
+                          - document-processing
+                          - image-processing
+                          - media-generation
+
+                          # Infrastructure
+                          - kubernetes-access
+                          - cloud-resource-management
+                          - network-configuration
+                      maxItems: 10
+                      uniqueItems: true
+
+                # ============================================================================
                 # MCP Transport Configuration (per MCP Spec)
                 # ============================================================================
                 transport:
