@@ -66,6 +66,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000    # Non-root user (required by OPA policy)
         fsGroup: 1000      # File system group ownership
+        seccompProfile:
+          type: RuntimeDefault  # Use default seccomp profile for syscall filtering
 
       # ============================================================================
       # Pod Anti-Affinity: Spread replicas across nodes for HA
