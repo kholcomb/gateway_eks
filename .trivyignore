@@ -114,8 +114,8 @@ AVD-AWS-0176
 # Kubernetes Container UIDs/GIDs
 # ==============================================================================
 
-# AVD-KSV-0020: Container runAsUser uses UID 1000 (recommendation is >1000)
-# AVD-KSV-0021: Container runAsGroup uses GID 1000 (recommendation is >1000)
+# AVD-KSV-0020: Container runAsUser uses UID 1000 (recommendation is >10000)
+# AVD-KSV-0021: Container runAsGroup uses GID 1000 (recommendation is >10000)
 # Reason: The MCP server template uses UID/GID 1000, which is a common choice
 # for application containers and avoids the system reserved range (0-999).
 #
@@ -126,12 +126,12 @@ AVD-AWS-0176
 #   - allowPrivilegeEscalation: false
 #   - seccompProfile: RuntimeDefault
 #
-# While >1000 reduces risk of host UID conflicts, 1000 is acceptable for:
+# While >10000 reduces risk of host UID conflicts, 1000 is acceptable for:
 #   - Development and test environments
 #   - Containers with proper isolation (seccomp, capabilities dropped)
 #   - When container images are built for UID 1000
 #
-# For production, consider using UID/GID >1000 (e.g., 1000) if feasible
+# For production, consider using UID/GID >10000 (e.g., 10001) if feasible
 # Related files: docs/mcp/examples/mcp-server-template.yaml
-# AVD-KSV-0020
-# AVD-KSV-0021
+AVD-KSV-0020
+AVD-KSV-0021
