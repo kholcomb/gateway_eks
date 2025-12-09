@@ -179,35 +179,6 @@ cd scripts
 
 This deploys everything: infrastructure + applications in one command.
 
-## Deployment Comparison
-
-| Feature | eksctl | Terraform |
-|---------|--------|-----------|
-| **Setup Time** | 15-20 min | 25-35 min |
-| **Configuration** | Simple YAML | Multiple .tf files |
-| **Complexity** | Low - Single file | Medium - Multiple files |
-| **VPC & Networking** | ✅ Auto-created | ✅ Custom control |
-| **EKS Cluster** | ✅ Full support | ✅ Full support |
-| **Node Groups** | ✅ Included | ✅ Included |
-| **RDS Database** | ❌ Bring your own | ✅ Included |
-| **Secrets Manager** | ⚠️ Manual setup | ✅ Automated |
-| **State Management** | N/A | ✅ S3 backend |
-| **Infrastructure as Code** | Partial | ✅ Complete |
-| **Best For** | Dev/Testing | Production |
-| **Cost** | Lower (fewer resources) | Higher (full stack) |
-
-**Choose eksctl if:**
-- You need a quick development/testing environment
-- You already have a database solution
-- You prefer simpler configuration
-- You're learning Kubernetes/EKS
-
-**Choose Terraform if:**
-- You need production-ready infrastructure
-- You want complete infrastructure management
-- You need RDS database provisioning
-- You require infrastructure versioning and state management
-
 ### 5. Set Up Bastion for Testing
 
 ```bash
