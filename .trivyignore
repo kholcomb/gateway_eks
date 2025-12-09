@@ -1,0 +1,137 @@
+# Trivy Ignore File
+# Add vulnerability IDs or checks to ignore here
+# Format: AVD-<TYPE>-<NUMBER> or CVE-XXXX-XXXXX
+#
+# Example:
+# AVD-AWS-0001  # Ignore specific AWS check
+# CVE-2021-12345  # Ignore specific CVE
+#
+# Documentation: https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/
+
+# ==============================================================================
+# AWS EKS Infrastructure - Intentional Design Decisions
+# ==============================================================================
+
+# AVD-AWS-0104: EKS cluster and node security groups require unrestricted egress
+# Reason: EKS clusters/nodes need internet access for:
+#   - Pulling container images from ECR/Docker registries
+#   - Communicating with AWS service endpoints (ECR, S3, CloudWatch, etc.)
+#   - Downloading security patches and system updates
+#   - Accessing external APIs (required for LiteLLM functionality)
+# Restricting egress would break core cluster functionality
+# Related files: terraform/modules/eks/main.tf
+AVD-AWS-0104
+
+# AVD-AWS-0164: VPC public subnets intentionally auto-assign public IPs
+# Reason: These are explicitly designed as public subnets for:
+#   - Application Load Balancers (tagged kubernetes.io/role/elb)
+#   - Bastion hosts for administrative access
+#   - NAT gateways for private subnet egress
+# This is standard AWS EKS architecture with public/private subnet separation
+# Related files: terraform/modules/vpc/main.tf
+AVD-AWS-0164
+
+# ==============================================================================
+# ECR Repository Configuration - Development Flexibility
+# ==============================================================================
+
+# AVD-AWS-0031: ECR "deployments" repository allows mutable tags
+# Reason: The "deployments" repository (for MCP servers and custom apps) uses
+# MUTABLE tags to support iterative development workflows where developers
+# need to update images with the same tag (e.g., :latest, :dev).
+#
+# Security controls in place:
+#   - "infrastructure" repository uses IMMUTABLE tags for production images
+#   - Image scanning is enabled on push (ecr_scan_on_push = true)
+#   - Lifecycle policies clean up old/untagged images
+#   - Gatekeeper policies enforce only approved registries
+#
+# To override: Set ecr_deployments_repository.tag_mutability = "IMMUTABLE"
+# Related files: terraform/variables.tf:313, terraform/modules/ecr/main.tf:36
+AVD-AWS-0031
+
+# ==============================================================================
+# Kubernetes Gatekeeper Policy - Repository Patterns
+# ==============================================================================
+
+# AVD-KSV-0124: Gatekeeper allowed-repos policy uses necessary prefix patterns
+# Reason: Repository patterns must balance security with operational needs:
+#   - ECR patterns (*.dkr.ecr) must match across all AWS regions dynamically
+#   - Short names ("redis", "grafana") match official Docker Hub library images
+#   - Registry prefixes match official public registries (ghcr.io, quay.io)
+#
+# Security controls in place:
+#   - Policy is in "dryrun" mode initially for validation (line 12)
+#   - exemptImages list provides additional specificity for AWS resources
+#   - All patterns are documented with their intended source
+#   - Pattern list is explicitly maintained and reviewed
+#
+# Patterns are as specific as possible while maintaining functionality.
+# Making them more restrictive would break legitimate image pulls.
+# Related files: manifests/opa-policies/constraints/allowed-repos.yaml
+AVD-KSV-0124
+
+# ==============================================================================
+# CloudWatch Logs - Encryption Configuration
+# ==============================================================================
+
+# AVD-AWS-0017: CloudWatch log groups use AWS-managed encryption by default
+# Reason: CloudWatch log groups are encrypted by default using AWS-managed keys.
+# Using customer-managed KMS CMKs would provide additional key rotation control
+# but adds operational complexity and cost for minimal security benefit.
+#
+# Security controls in place:
+#   - All log groups are encrypted at rest (AWS default)
+#   - Retention periods are configured to limit data exposure
+#   - IAM policies restrict access to log groups
+#
+# If CMK encryption is required for compliance, add kms_key_id parameter
+# Related files: terraform/modules/eks/main.tf:387, terraform/modules/vpc/main.tf:220
+AVD-AWS-0017
+
+# ==============================================================================
+# RDS Database Authentication
+# ==============================================================================
+
+# AVD-AWS-0176: RDS uses Secrets Manager instead of IAM database authentication
+# Reason: The RDS instance uses AWS Secrets Manager for credential management
+# with automatic rotation, which provides secure database access without IAM auth.
+#
+# Security controls in place:
+#   - Secrets Manager manages master password (manage_master_user_password = true)
+#   - Automatic secret rotation via Secrets Manager
+#   - Secrets encrypted with KMS (master_user_secret_kms_key_id set)
+#   - Database is not publicly accessible (publicly_accessible = false)
+#   - TLS/SSL enforced via parameter group
+#
+# IAM authentication adds token-based access but increases complexity.
+# Current approach meets security requirements for most use cases.
+# To enable: Set enable_iam_database_authentication = true in RDS module
+# Related files: terraform/modules/rds/main.tf:88-139
+AVD-AWS-0176
+
+# ==============================================================================
+# Kubernetes Container UIDs/GIDs
+# ==============================================================================
+
+# AVD-KSV-0020: Container runAsUser uses UID 1000 (recommendation is >10000)
+# AVD-KSV-0021: Container runAsGroup uses GID 1000 (recommendation is >10000)
+# Reason: The MCP server template uses UID/GID 1000, which is a common choice
+# for application containers and avoids the system reserved range (0-999).
+#
+# Security controls in place:
+#   - runAsNonRoot: true enforced (prevents UID 0)
+#   - readOnlyRootFilesystem: true
+#   - All capabilities dropped
+#   - allowPrivilegeEscalation: false
+#   - seccompProfile: RuntimeDefault
+#
+# While >10000 reduces risk of host UID conflicts, 1000 is acceptable for:
+#   - Development and test environments
+#   - Containers with proper isolation (seccomp, capabilities dropped)
+#   - When container images are built for UID 1000
+#
+# For production, consider using UID/GID >10000 (e.g., 10001) if feasible
+# Related files: docs/mcp/examples/mcp-server-template.yaml
+AVD-KSV-0020
+AVD-KSV-0021

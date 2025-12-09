@@ -47,6 +47,7 @@ resource "aws_security_group" "cluster" {
   vpc_id      = var.vpc_id
 
   egress {
+    description = "Allow all outbound traffic for EKS cluster control plane"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -184,6 +185,7 @@ resource "aws_security_group" "node_group" {
   vpc_id      = var.vpc_id
 
   egress {
+    description = "Allow all outbound traffic for EKS worker nodes"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"

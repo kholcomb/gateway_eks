@@ -23,33 +23,30 @@ spec:
       - gatekeeper-system
   parameters:
     repos:
-      # Official LiteLLM images
-      - "ghcr.io/berriai/"
-      # OpenWebUI
-      - "ghcr.io/open-webui/"
+      # Official LiteLLM images (exact org match)
+      - "ghcr.io/berriai"
+      # OpenWebUI (exact org match)
+      - "ghcr.io/open-webui"
       # Redis
       - "docker.io/library/redis"
-      - "redis"
-      # Bitnami images (common for Helm charts)
-      - "docker.io/bitnami/"
-      # Prometheus/Grafana stack
-      - "quay.io/prometheus/"
-      - "docker.io/grafana/"
-      - "grafana/"
-      - "quay.io/prometheus-operator/"
-      # Jaeger
-      - "docker.io/jaegertracing/"
-      - "jaegertracing/"
-      # External Secrets Operator
-      - "ghcr.io/external-secrets/"
-      # AWS EKS add-ons
-      - "602401143452.dkr.ecr."  # AWS ECR for EKS add-ons
-      - "public.ecr.aws/"
-      # Pause container
-      - "registry.k8s.io/"
+      # Bitnami images (common for Helm charts, exact org match)
+      - "docker.io/bitnamilegacy"
+      # Prometheus/Grafana stack (exact org matches)
+      - "quay.io/prometheus"
+      - "docker.io/grafana"
+      - "quay.io/prometheus-operator"
+      # Jaeger (exact org match)
+      - "docker.io/jaegertracing"
+      # External Secrets Operator (exact org match)
+      - "ghcr.io/external-secrets"
+      # AWS EKS add-ons (ECR region-specific, exempt in exemptImages below)
+      - "602401143452.dkr.ecr"
+      - "public.ecr.aws"
+      # Pause container (exact registry match)
+      - "registry.k8s.io"
       # Customer ECR repositories (MCP servers and custom images)
-      # NOTE: Replace ACCOUNT_ID with your actual AWS account ID
-      - "ACCOUNT_ID.dkr.ecr."
+      # NOTE: Replace ACCOUNT_ID with your actual AWS account ID (e.g., 123456789012)
+      #- "ACCOUNT_ID.dkr.ecr"
     exemptImages:
       # AWS CNI and other EKS system images
       - "602401143452.dkr.ecr.*.amazonaws.com/*"
