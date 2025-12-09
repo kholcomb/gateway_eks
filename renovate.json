@@ -5,7 +5,7 @@
     ":semanticCommits",
     ":dependencyDashboard"
   ],
-  "description": "Renovate configuration for LiteLLM EKS deployment",
+  "description": "Renovate configuration for managing Terraform, Docker, Helm, and GitHub Actions dependencies with specific rules and schedules.",
   "labels": [
     "dependencies"
   ],
@@ -164,6 +164,41 @@
   "separateMultipleMajor": true,
   "rebaseWhen": "behind-base-branch",
   "dependencyDashboardTitle": "Dependency Dashboard",
-  "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates for the LiteLLM EKS deployment infrastructure.",
-  "timezone": "America/New_York"
+  "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates.",
+  "timezone": "America/New_York",
+  "regexManagers": [
+    {
+      "description": "Update Docker image tags in Helm files",
+      "fileMatch": [
+        "^helm-values/.*\\.yaml$"
+      ],
+      "matchStrings": [
+        "repository:\\s*(?<depName>[^\\s]+)\\s+.*?tag:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "description": "Update Docker image tags in Helm files",
+      "fileMatch": [
+        "^helm-values/.*\\.yaml$"
+      ],
+      "matchStrings": [
+        "image:\\s*(?<depName>[^\\s:]+)\\s+.*?tag:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "description": "Update Docker images with inline tags (image:tag format)",
+      "fileMatch": [
+        "^helm-values/.*\\.yaml$"
+      ],
+      "matchStrings": [
+        "image:\\s*(?<depName>[^:]+):(?<currentValue>[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ]
 }
