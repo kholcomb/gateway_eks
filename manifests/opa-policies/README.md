@@ -15,6 +15,7 @@ opa-policies/
 │   ├── block-latest-tag.yaml
 │   ├── block-nodeport.yaml
 │   ├── container-limits.yaml
+│   ├── mcpserver-authentication.yaml
 │   ├── pod-security.yaml
 │   ├── require-probes.yaml
 │   └── required-labels.yaml
@@ -23,6 +24,7 @@ opa-policies/
 │   ├── block-latest-tag.yaml
 │   ├── block-nodeport.yaml
 │   ├── container-limits.yaml
+│   ├── mcpserver-authentication.yaml
 │   ├── pod-security-baseline.yaml
 │   ├── require-probes.yaml
 │   └── required-labels.yaml
@@ -40,6 +42,7 @@ opa-policies/
 | **K8sPodSecurity** | Enforces Pod Security Standards (baseline) | dryrun |
 | **K8sRequireProbes** | Requires liveness and readiness probes | dryrun |
 | **K8sRequiredLabels** | Requires standard Kubernetes labels | dryrun |
+| **MCPServerAuthentication** | Enforces zero-trust authentication for MCP servers | dryrun |
 
 ## Deployment
 

@@ -1,0 +1,17 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: MCPServerAuthentication
+metadata:
+  name: mcpserver-zero-trust-auth
+  annotations:
+    description: >-
+      Enforces zero-trust authentication on all MCPServer resources.
+      Validates inbound auth, user context, and capability-based security.
+spec:
+  # Start in dryrun mode for initial deployment, then switch to deny
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["mcp.litellm.ai"]
+        kinds: ["MCPServer"]
+  parameters:
+    enforcementLevel: standard
