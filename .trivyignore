@@ -8,4 +8,65 @@
 #
 # Documentation: https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/
 
-# Add exceptions below this line as needed
+# ==============================================================================
+# AWS EKS Infrastructure - Intentional Design Decisions
+# ==============================================================================
+
+# AVD-AWS-0104: EKS cluster and node security groups require unrestricted egress
+# Reason: EKS clusters/nodes need internet access for:
+#   - Pulling container images from ECR/Docker registries
+#   - Communicating with AWS service endpoints (ECR, S3, CloudWatch, etc.)
+#   - Downloading security patches and system updates
+#   - Accessing external APIs (required for LiteLLM functionality)
+# Restricting egress would break core cluster functionality
+# Related files: terraform/modules/eks/main.tf
+AVD-AWS-0104
+
+# AVD-AWS-0164: VPC public subnets intentionally auto-assign public IPs
+# Reason: These are explicitly designed as public subnets for:
+#   - Application Load Balancers (tagged kubernetes.io/role/elb)
+#   - Bastion hosts for administrative access
+#   - NAT gateways for private subnet egress
+# This is standard AWS EKS architecture with public/private subnet separation
+# Related files: terraform/modules/vpc/main.tf
+AVD-AWS-0164
+
+# ==============================================================================
+# ECR Repository Configuration - Development Flexibility
+# ==============================================================================
+
+# AVD-AWS-0031: ECR "deployments" repository allows mutable tags
+# Reason: The "deployments" repository (for MCP servers and custom apps) uses
+# MUTABLE tags to support iterative development workflows where developers
+# need to update images with the same tag (e.g., :latest, :dev).
+#
+# Security controls in place:
+#   - "infrastructure" repository uses IMMUTABLE tags for production images
+#   - Image scanning is enabled on push (ecr_scan_on_push = true)
+#   - Lifecycle policies clean up old/untagged images
+#   - Gatekeeper policies enforce only approved registries
+#
+# To override: Set ecr_deployments_repository.tag_mutability = "IMMUTABLE"
+# Related files: terraform/variables.tf:313, terraform/modules/ecr/main.tf:36
+AVD-AWS-0031
+
+# ==============================================================================
+# Kubernetes Gatekeeper Policy - Repository Patterns
+# ==============================================================================
+
+# AVD-KSV-0124: Gatekeeper allowed-repos policy uses necessary prefix patterns
+# Reason: Repository patterns must balance security with operational needs:
+#   - ECR patterns (*.dkr.ecr) must match across all AWS regions dynamically
+#   - Short names ("redis", "grafana") match official Docker Hub library images
+#   - Registry prefixes match official public registries (ghcr.io, quay.io)
+#
+# Security controls in place:
+#   - Policy is in "dryrun" mode initially for validation (line 12)
+#   - exemptImages list provides additional specificity for AWS resources
+#   - All patterns are documented with their intended source
+#   - Pattern list is explicitly maintained and reviewed
+#
+# Patterns are as specific as possible while maintaining functionality.
+# Making them more restrictive would break legitimate image pulls.
+# Related files: manifests/opa-policies/constraints/allowed-repos.yaml
+AVD-KSV-0124
