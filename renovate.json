@@ -152,7 +152,6 @@
         "docker"
       ],
       "automerge": false,
-      "separateMinorPatch": true,
       "schedule": [
         "before 6am on monday"
       ]
@@ -248,9 +247,6 @@
     "labels": [
       "security",
       "dependencies"
-    ],
-    "assignees": [
-      "@renovate-bot"
     ],
     "automerge": false
   },
