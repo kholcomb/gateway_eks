@@ -5,7 +5,7 @@
     ":semanticCommits",
     ":dependencyDashboard"
   ],
-  "description": "Renovate configuration for LiteLLM EKS deployment",
+  "description": "Renovate configuration for managing Terraform, Docker, Helm, and GitHub Actions dependencies with specific rules and schedules.",
   "labels": [
     "dependencies"
   ],
@@ -164,11 +164,11 @@
   "separateMultipleMajor": true,
   "rebaseWhen": "behind-base-branch",
   "dependencyDashboardTitle": "Dependency Dashboard",
-  "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates for the LiteLLM EKS deployment infrastructure.",
+  "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates.",
   "timezone": "America/New_York",
   "regexManagers": [
     {
-      "description": "Update Docker image tags in Helm values files (repository + tag pattern)",
+      "description": "Update Docker image tags in Helm files",
       "fileMatch": [
         "^helm-values/.*\\.yaml$"
       ],
@@ -179,7 +179,7 @@
       "versioningTemplate": "docker"
     },
     {
-      "description": "Update Docker image tags in Helm values files (image + tag pattern)",
+      "description": "Update Docker image tags in Helm files",
       "fileMatch": [
         "^helm-values/.*\\.yaml$"
       ],
