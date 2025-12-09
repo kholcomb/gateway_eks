@@ -5,12 +5,272 @@
 The **MCP Server Operator** is a Kubernetes operator that simplifies the deployment and lifecycle management of Model Context Protocol (MCP) servers in the LiteLLM EKS cluster. It reduces the complexity of deploying MCP servers from 7+ manual Kubernetes resources down to a single declarative `MCPServer` Custom Resource.
 
 **Key Benefits:**
+
 - **Simplified deployment**: Single YAML resource instead of 7+ manifests
 - **Automated compliance**: OPA policies, security contexts, and IRSA configuration baked in
 - **Self-service**: Teams can provision MCP servers without deep Kubernetes knowledge
 - **Lifecycle management**: Automatic secret rotation, health monitoring, version upgrades
 - **LiteLLM integration**: Auto-register MCP servers with LiteLLM proxy
 - **Observability**: Automatic Prometheus/Jaeger integration
+
+---
+
+## MCP Server Development with FastMCP
+
+### What is FastMCP?
+
+**FastMCP** is the recommended Python framework for building MCP servers in this architecture. It provides a high-level, decorator-based interface for creating Model Context Protocol servers with minimal boilerplate.
+
+**Repository**: [https://github.com/jlowin/fastmcp](https://github.com/jlowin/fastmcp)
+
+### Why FastMCP?
+
+- **Pythonic**: Decorator-based API (`@mcp.tool`, `@mcp.resource`, `@mcp.prompt`)
+- **Production-ready**: Built-in enterprise auth (Google, GitHub, Azure, API keys)
+- **Multiple transports**: Stdio, SSE, HTTP support
+- **Fast development**: Minimal code required to build servers
+- **Type safety**: Automatic schema generation from Python type hints
+- **Testing**: Built-in testing framework for MCP servers
+
+### Example: GitHub MCP Server with FastMCP
+
+```python
+# mcp-server-github/server.py
+from fastmcp import FastMCP
+from typing import List
+import os
+import httpx
+
+# Initialize MCP server
+mcp = FastMCP("GitHub Tools")
+
+# GitHub API client
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_ORG = os.getenv("GITHUB_DEFAULT_ORG", "your-org")
+
+@mcp.tool
+async def search_repositories(query: str, max_results: int = 10) -> List[dict]:
+    """Search GitHub repositories in the organization.
+
+    Args:
+        query: Search query string
+        max_results: Maximum number of results to return (default: 10)
+
+    Returns:
+        List of repository objects with name, description, URL
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/search/repositories",
+            params={"q": f"{query} org:{GITHUB_ORG}", "per_page": max_results},
+            headers={"Authorization": f"Bearer {GITHUB_TOKEN}"}
+        )
+        data = response.json()
+
+        return [
+            {
+                "name": repo["name"],
+                "description": repo["description"],
+                "url": repo["html_url"],
+                "stars": repo["stargazers_count"]
+            }
+            for repo in data.get("items", [])
+        ]
+
+@mcp.tool
+async def get_repository_issues(repo_name: str, state: str = "open") -> List[dict]:
+    """Get issues from a GitHub repository.
+
+    Args:
+        repo_name: Repository name (e.g., 'my-repo')
+        state: Issue state - 'open', 'closed', or 'all' (default: 'open')
+
+    Returns:
+        List of issue objects with title, number, state, URL
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}/issues",
+            params={"state": state},
+            headers={"Authorization": f"Bearer {GITHUB_TOKEN}"}
+        )
+        issues = response.json()
+
+        return [
+            {
+                "number": issue["number"],
+                "title": issue["title"],
+                "state": issue["state"],
+                "url": issue["html_url"],
+                "created_at": issue["created_at"]
+            }
+            for issue in issues
+        ]
+
+@mcp.resource("github://org/{org_name}")
+async def get_organization_info(org_name: str) -> str:
+    """Get information about a GitHub organization."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.github.com/orgs/{org_name}",
+            headers={"Authorization": f"Bearer {GITHUB_TOKEN}"}
+        )
+        org = response.json()
+
+        return f"""
+Organization: {org['name']}
+Description: {org['description']}
+Public Repos: {org['public_repos']}
+Followers: {org['followers']}
+"""
+
+# Health endpoints for Kubernetes
+@mcp.http_route("/health", methods=["GET"])
+async def health_check():
+    return {"status": "healthy"}
+
+@mcp.http_route("/ready", methods=["GET"])
+async def readiness_check():
+    # Check GitHub API connectivity
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/rate_limit",
+                headers={"Authorization": f"Bearer {GITHUB_TOKEN}"},
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                return {"status": "ready"}
+    except Exception:
+        return {"status": "not_ready"}, 503
+
+if __name__ == "__main__":
+    # Run with SSE transport (recommended for LiteLLM)
+    mcp.run(transport="sse", host="0.0.0.0", port=8080)
+```
+
+### FastMCP Container Image
+
+**Dockerfile for MCP Server:**
+
+```dockerfile
+# Use Python 3.12 slim base image
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY server.py .
+
+# Create non-root user (required by OPA policy)
+RUN useradd -m -u 1000 mcpuser && \
+    chown -R mcpuser:mcpuser /app
+
+USER 1000
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Run MCP server
+CMD ["python", "server.py"]
+```
+
+**requirements.txt:**
+
+```txt
+fastmcp>=0.1.0
+httpx>=0.27.0
+pydantic>=2.0.0
+uvicorn>=0.30.0
+prometheus-client>=0.20.0
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp>=1.25.0
+```
+
+### Building and Deploying FastMCP Servers
+
+```mermaid
+graph LR
+    A[Write server.py<br/>with @mcp.tool] --> B[Create Dockerfile]
+    B --> C[Build image]
+    C --> D[Push to ECR]
+    D --> E[Create MCPServer CRD]
+    E --> F[Operator deploys<br/>to Kubernetes]
+    F --> G[Auto-register<br/>with LiteLLM]
+
+    style A fill:#e3f2fd
+    style E fill:#fff3e0
+    style G fill:#e8f5e9
+```
+
+**Build & Push:**
+
+```bash
+# Set variables
+export AWS_REGION=us-east-1
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export MCP_SERVER_NAME=mcp-github
+
+# Build image
+docker build -t ${MCP_SERVER_NAME}:1.0.0 .
+
+# Tag for ECR
+docker tag ${MCP_SERVER_NAME}:1.0.0 \
+  ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_SERVER_NAME}:1.0.0
+
+# Push to ECR
+aws ecr get-login-password --region ${AWS_REGION} | \
+  docker login --username AWS --password-stdin \
+  ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${MCP_SERVER_NAME}:1.0.0
+```
+
+**Deploy with Operator:**
+
+```yaml
+apiVersion: mcp.litellm.ai/v1alpha1
+kind: MCPServer
+metadata:
+  name: github
+  namespace: litellm
+spec:
+  type: external-saas
+  transport: sse
+  image:
+    repository: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/mcp-github
+    tag: "1.0.0"
+  replicas: 2
+  config:
+    GITHUB_DEFAULT_ORG: "your-organization"
+  secrets:
+    - name: GITHUB_TOKEN
+      awsSecretKey: mcp/github/token
+  observability:
+    metrics:
+      enabled: true
+    tracing:
+      enabled: true
+  litellm:
+    autoRegister: true
+```
 
 ---
 
@@ -1044,8 +1304,26 @@ mcp_operator_reconcile_errors_total{controller="mcpserver",error_type="external_
 
 ## References
 
-- **Kubebuilder Documentation**: https://book.kubebuilder.io/
-- **Operator Best Practices**: https://sdk.operatorframework.io/docs/best-practices/
-- **Controller Runtime**: https://pkg.go.dev/sigs.k8s.io/controller-runtime
-- **External Secrets Operator API**: https://external-secrets.io/latest/api/
-- **Prometheus Operator CRDs**: https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/design.md
+### MCP & FastMCP
+
+- **FastMCP Framework**: <https://github.com/jlowin/fastmcp>
+- **Model Context Protocol Spec**: <https://modelcontextprotocol.io>
+- **LiteLLM MCP Documentation**: <https://docs.litellm.ai/docs/mcp>
+
+### Kubernetes Operators
+
+- **Kubebuilder Documentation**: <https://book.kubebuilder.io/>
+- **Operator Best Practices**: <https://sdk.operatorframework.io/docs/best-practices/>
+- **Controller Runtime**: <https://pkg.go.dev/sigs.k8s.io/controller-runtime>
+
+### Integrations
+
+- **External Secrets Operator API**: <https://external-secrets.io/latest/api/>
+- **Prometheus Operator CRDs**: <https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/design.md>
+- **OPA Gatekeeper**: <https://open-policy-agent.github.io/gatekeeper/>
+
+### Project Documentation
+
+- **Existing Architecture**: [`security/ARCHITECTURE.md`](../security/ARCHITECTURE.md)
+- **MCP Deployment Guide**: [`MCP_DEPLOYMENT.md`](MCP_DEPLOYMENT.md)
+- **MCP Server Template**: [`mcp/examples/mcp-server-template.yaml`](mcp/examples/mcp-server-template.yaml)
