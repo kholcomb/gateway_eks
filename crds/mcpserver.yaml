@@ -46,7 +46,15 @@ spec:
                 # Server Type
                 # ============================================================================
                 type:
-                  description: 'Type of MCP server: external-saas, aws-service, or internal-api'
+                  description: |
+                    Type of MCP server deployment pattern:
+                    - external-saas: Integrates with external SaaS APIs (GitHub, Stripe, Slack, etc.)
+                      Common capabilities: external-api, saas-integration, web-scraping
+                    - aws-service: Interfaces with AWS services (S3, DynamoDB, Lambda, etc.)
+                      Common capabilities: file-storage-read/write, database-read/write, cloud-resource-management
+                    - internal-api: Internal company services and databases
+                      Common capabilities: database-read/write, code-execution, authentication
+                    Note: Types are guidelines for deployment patterns; capabilities may overlap (e.g., internal-api calling external APIs)
                   type: string
                   enum:
                     - external-saas
@@ -106,7 +114,14 @@ spec:
                       default: normal
 
                     capabilities:
-                      description: 'Functional capabilities provided by this MCP server (for discovery and policy)'
+                      description: |
+                        Functional capabilities provided by this MCP server (for discovery and policy).
+                        Typical capability/type alignments:
+                        - kubernetes-access, cloud-resource-management: Typically internal-api or aws-service, should NOT be external-saas
+                        - secret-management, credential-access: Typically internal-api only (OPA enforces restrictions)
+                        - external-api, saas-integration, web-scraping: Typically external-saas
+                        - database-read/write, file-storage-read/write: Typically aws-service or internal-api
+                        Note: Multiple capabilities can be declared; validation is primarily for security policies
                       type: array
                       items:
                         type: string
@@ -264,7 +279,7 @@ spec:
                           default: true
 
                         required:
-                          description: 'Reject requests without user context (recommended for restricted data)'
+                          description: 'Reject requests without user context (STRONGLY RECOMMENDED: set to true when dataClassification is "confidential" or "restricted" for security and audit compliance)'
                           type: boolean
                           default: false
 
@@ -420,9 +435,6 @@ spec:
                 resources:
                   description: Container resource requirements
                   type: object
-                  required:
-                    - limits
-                    - requests
                   properties:
                     requests:
                       description: Minimum resource requirements
@@ -476,7 +488,7 @@ spec:
                       name:
                         description: 'Environment variable name'
                         type: string
-                        pattern: '^[A-Z][A-Z0-9_]*$'
+                        pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
                       awsSecretKey:
                         description: 'AWS Secrets Manager key path'
                         type: string
@@ -662,6 +674,7 @@ spec:
                           - ServiceMonitorCreated
                           - LiteLLMRegistered
                           - HealthCheckPassing
+                          - RBACConfigured
                       status:
                         description: 'Condition status (True/False/Unknown)'
                         type: string
@@ -703,6 +716,15 @@ spec:
                   description: 'Last time the status was updated'
                   type: string
                   format: date-time
+
+                replicas:
+                  description: 'Current number of ready replicas'
+                  type: integer
+                  format: int32
+
+                selector:
+                  description: 'Label selector for pods belonging to this MCPServer'
+                  type: string
 
       # ============================================================================
       # Additional Printer Columns (for kubectl get mcpserver)
