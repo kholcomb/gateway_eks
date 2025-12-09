@@ -64,8 +64,9 @@ spec:
       # ============================================================================
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000    # Non-root user (required by OPA policy)
-        fsGroup: 1000      # File system group ownership
+        runAsUser: 1000   # Non-root user > 1000 (avoids host UID conflicts)
+        runAsGroup: 1000  # Non-root group > 1000 (avoids host GID conflicts)
+        fsGroup: 1000     # File system group ownership
         seccompProfile:
           type: RuntimeDefault  # Use default seccomp profile for syscall filtering
 
@@ -200,7 +201,8 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true  # Prevent writes to container filesystem
           runAsNonRoot: true
-          runAsUser: 1000
+          #runAsUser: 1000   # Use UID > 1000 to avoid host conflicts
+          #runAsGroup: 1000  # Use GID > 1000 to avoid host conflicts
           capabilities:
             drop:
             - ALL  # Drop all Linux capabilities (required by OPA policy)
