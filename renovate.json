@@ -261,8 +261,9 @@
       "^helm-values/.*\\.ya?ml$"
     ]
   },
-  "regexManagers": [
+  "customManagers": [
     {
+      "customType": "regex",
       "description": "Update Docker images without repository/tag structure (image: repo, tag: version format)",
       "fileMatch": [
         "^helm-values/.*\\.yaml$"
