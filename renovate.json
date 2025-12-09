@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
+    "config:best-practices",
     ":semanticCommits",
     ":dependencyDashboard"
   ],
@@ -88,8 +88,7 @@
       "automergeType": "pr",
       "schedule": [
         "before 6am on monday"
-      ],
-      "pinDigests": true
+      ]
     },
     {
       "description": "Kubernetes version - major updates require manual review",
@@ -139,29 +138,6 @@
       ]
     }
   ],
-  "terraform": {
-    "managerFilePatterns": [
-      "/\\.tf$/",
-      "/(^|/)terraform\\.tfvars$/",
-      "/(^|/)\\.?terraform\\.tfvars\\.json$/"
-    ]
-  },
-  "dockerfile": {
-    "managerFilePatterns": [
-      "/(^|/|\\.)Dockerfile$/",
-      "/(^|/)Dockerfile\\.[^/]*$/"
-    ]
-  },
-  "helm-values": {
-    "managerFilePatterns": [
-      "/helm-values/.*\\.yaml$/"
-    ]
-  },
-  "kubernetes": {
-    "managerFilePatterns": [
-      "/\\.ya?ml$/"
-    ]
-  },
   "ignorePaths": [
     "**/node_modules/**",
     "**/bower_components/**",
@@ -187,7 +163,7 @@
   "separateMajorMinor": true,
   "separateMultipleMajor": true,
   "rebaseWhen": "behind-base-branch",
-  "dependencyDashboardTitle": "Dependency Dashboard - LiteLLM EKS",
+  "dependencyDashboardTitle": "Dependency Dashboard",
   "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates for the LiteLLM EKS deployment infrastructure.",
   "timezone": "America/New_York"
 }
