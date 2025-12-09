@@ -2,50 +2,50 @@
 
 **Production-ready AI/LLM infrastructure on Amazon EKS** with comprehensive observability, security, and authentication.
 
-This repository provides everything you need to deploy a complete, enterprise-grade LLM proxy infrastructure featuring:
+## Quick Links
 
-- 🔐 **JWT Authentication** via Okta OIDC
-- 🤖 **Multi-Model Support** - Claude, Llama, Mistral via AWS Bedrock
-- 📊 **Full Observability** - Prometheus, Grafana, Jaeger tracing
-- 🔒 **Security First** - OPA Gatekeeper policies, IRSA, encrypted secrets
-- ⚡ **High Availability** - Redis HA, multi-replica deployments
-- 🛠️ **Extensible** - Support for Model Context Protocol (MCP) servers
+| Guide | Description |
+|-------|-------------|
+| 🚀 [Quick Start](#quick-start) | Get started in 20-35 minutes |
+| 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Complete step-by-step walkthrough |
+| 🔐 [JWT Setup](docs/JWT_AUTHENTICATION_SETUP.md) | Configure Okta OIDC authentication |
+| 📦 [ECR Setup](docs/ECR_SETUP.md) | Container registry configuration |
+| 🤖 [MCP Deployment](docs/MCP_DEPLOYMENT.md) | Deploy Model Context Protocol servers |
+| 🏗️ [MCP Operator](docs/MCP_OPERATOR_ARCHITECTURE.md) | Kubernetes operator for MCP servers |
 
-**Quick Links:**
-- 📖 [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Step-by-step walkthrough
-- 🚀 [Quick Start](#quick-start) - Get started in minutes
-- 🏗️ [Architecture](#architecture) - System design overview
-- 📦 [ECR Setup](docs/ECR_SETUP.md) - Container registry configuration
+---
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph "External Services"
+    subgraph "Users"
         User[Users/Clients]
+    end
+
+    subgraph "External Services"
         Bedrock[AWS Bedrock<br/>Claude, Llama, Mistral]
         RDS[Amazon RDS<br/>PostgreSQL]
-        SecretsManager[AWS Secrets Manager<br/>API Keys & Credentials]
-        Bastion[EC2 Bastion<br/>Testing & Access]
+        SecretsManager[AWS Secrets Manager]
+        Okta[Okta OIDC]
     end
 
     subgraph "EKS Cluster"
-        subgraph "Application Layer"
+        subgraph "Application"
             OpenWebUI[OpenWebUI<br/>Chat Frontend]
             LiteLLM[LiteLLM Proxy<br/>JWT Auth + Routing]
             Redis[Redis HA<br/>Caching]
         end
 
-        subgraph "Observability Stack"
-            Prometheus[Prometheus<br/>Metrics Collection]
-            Grafana[Grafana<br/>Dashboards]
-            Jaeger[Jaeger<br/>Distributed Tracing]
-            Alertmanager[Alertmanager<br/>Alerts]
+        subgraph "Observability"
+            Prometheus[Prometheus]
+            Grafana[Grafana]
+            Jaeger[Jaeger]
         end
 
-        subgraph "Security & Secrets"
-            ESO[External Secrets<br/>Operator]
-            OPA[OPA Gatekeeper<br/>Policy Enforcement]
+        subgraph "Security"
+            ESO[External Secrets]
+            OPA[OPA Gatekeeper]
         end
     end
 
@@ -54,492 +54,266 @@ graph TB
     LiteLLM -->|Model Requests| Bedrock
     LiteLLM -->|Cache| Redis
     OpenWebUI -->|Session Data| RDS
-
     LiteLLM -->|Metrics| Prometheus
-    LiteLLM -->|Traces| Jaeger
     Prometheus -->|Visualize| Grafana
-    Prometheus -->|Alerts| Alertmanager
-
     ESO -->|Sync Secrets| SecretsManager
-    ESO -.->|Provides| LiteLLM
-    ESO -.->|Provides| OpenWebUI
-
-    OPA -.->|Enforce Policies| LiteLLM
-    OPA -.->|Enforce Policies| OpenWebUI
-
-    Bastion -.->|kubectl/port-forward| OpenWebUI
-    Bastion -.->|kubectl/port-forward| Grafana
 
     style LiteLLM fill:#326CE5,color:#fff
     style OpenWebUI fill:#61DAFB
-    style Bedrock fill:#FF9900,color:#fff
-    style Prometheus fill:#E6522C,color:#fff
-    style Grafana fill:#F46800,color:#fff
 ```
 
 ## Components
 
-| Component | Helm Chart | Image Version | Purpose |
-|-----------|------------|---------------|---------|
-| LiteLLM | `oci://ghcr.io/berriai/litellm-helm` | v1.80.5-stable | API gateway to Bedrock |
-| OpenWebUI | `open-webui/open-webui` | latest | Chat frontend |
-| Redis HA | `dandydev/redis-ha` | redis:7.4-alpine | Caching & rate limiting |
-| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | - | Metrics & alerting |
-| Jaeger | `jaegertracing/jaeger` | 1.53 | Distributed tracing |
-| External Secrets Operator | `external-secrets/external-secrets` | - | Secrets sync |
-| **ECR** | Terraform module | - | **Private container registry** |
+| Component | Purpose |
+|-----------|---------|
+| **LiteLLM** | API gateway to AWS Bedrock models |
+| **OpenWebUI** | Chat frontend with Okta authentication |
+| **Redis** | Caching |
+| **Prometheus/Grafana** | Metrics collection & visualization |
+| **Jaeger** | Distributed tracing |
+| **External Secrets** | AWS Secrets Manager integration |
+| **OPA Gatekeeper** |Policy enforcement |
 
-## Directory Structure
-
-```
-eks-deploy/
-├── eksctl/                          # eksctl configuration (alternative to Terraform)
-│   ├── cluster.yaml                 # EKS cluster definition
-│   └── README.md                    # eksctl deployment guide
-├── terraform/                       # Terraform infrastructure (full IaC)
-│   ├── main.tf                      # Main Terraform config
-│   ├── modules/                     # Reusable Terraform modules
-│   ├── environments/                # Environment-specific configs
-│   ├── terraform.tfvars.example     # Example configuration
-│   └── README.md                    # Terraform deployment guide
-├── docs/                            # Documentation
-│   ├── DEPLOYMENT_GUIDE.md          # Complete deployment walkthrough
-│   ├── JWT_AUTHENTICATION_SETUP.md  # Okta/JWT configuration
-│   ├── MCP_DEPLOYMENT.md            # Model Context Protocol servers
-│   └── mcp/examples/                # MCP server templates
-├── helm-values/                     # Helm chart configurations
-│   ├── litellm-values.yaml          # LiteLLM proxy (JWT, models, telemetry)
-│   ├── openwebui-values.yaml        # OpenWebUI frontend (Okta OIDC)
-│   ├── redis-values.yaml            # Redis HA cluster
-│   ├── kube-prometheus-stack-values.yaml  # Prometheus/Grafana/Alertmanager
-│   ├── jaeger-values.yaml           # Jaeger distributed tracing
-│   ├── external-secrets-values.yaml # External Secrets Operator
-│   └── gatekeeper-values.yaml       # OPA Gatekeeper policy engine
-├── manifests/                       # Kubernetes manifests
-│   ├── namespaces.yaml              # Namespace definitions
-│   ├── cluster-secret-store.yaml    # AWS Secrets Manager integration
-│   ├── litellm-external-secret.yaml # LiteLLM secrets sync
-│   ├── openwebui-external-secret.yaml # OpenWebUI secrets sync
-│   └── opa-policies/                # OPA Gatekeeper policies
-│       ├── templates/               # Policy templates
-│       ├── constraints/             # Policy constraints
-│       └── README.md                # Policy documentation
-├── grafana_dashboards/
-│   └── litellm-prometheus.json      # LiteLLM metrics dashboard
-├── iam/                             # IAM policies for IRSA
-│   ├── litellm-bedrock-policy.json  # Bedrock model access
-│   ├── external-secrets-policy.json # Secrets Manager read access
-│   └── trust-policy-template.json   # IRSA trust policy template
-├── scripts/                         # Deployment automation
-│   ├── deploy.sh                    # Main deployment script (interactive)
-│   ├── setup-bastion.sh             # Bastion EC2 setup & access
-│   └── README.md                    # Script usage guide
-├── security/
-│   └── ARCHITECTURE.md              # Security architecture details
-├── CONTRIBUTING.md                  # Git workflow and contribution guide
-└── README.md                        # This file
-```
+---
 
 ## Prerequisites
 
-1. **AWS Account** with appropriate permissions
-2. **AWS CLI v2** installed and configured
-3. **kubectl** installed (v1.28+)
-4. **helm** installed (v3.0+)
-5. **One of the following** for infrastructure deployment:
-   - **Terraform** (v1.5+) for full infrastructure deployment
-   - **eksctl** (latest) for EKS cluster-only deployment
+### AWS Account Setup
+- AWS account with appropriate permissions
+- AWS CLI v2 configured (`aws configure`)
+- EKS cluster permissions
+
+### Local Tools
+```bash
+# macOS
+brew install awscli kubectl helm
+
+# Verify installations
+aws --version      # AWS CLI 2.x
+kubectl version    # v1.28+
+helm version       # v3.0+
+```
+
+---
 
 ## Quick Start
 
-### Option 1: Interactive Deployment (Recommended)
-
-The deployment script will guide you through choosing between Terraform and eksctl:
+### 1. Deploy Infrastructure
 
 ```bash
+# Set environment variables
+export AWS_REGION=us-east-1
+export EKS_CLUSTER_NAME=litellm-eks
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Choose deployment method
 cd scripts
 ./deploy.sh infrastructure
+# You'll be prompted to choose: [T]erraform or [E]ksctl
 ```
 
-You'll be prompted to choose:
-- **[T] Terraform** - Full infrastructure (VPC, EKS, RDS, Secrets Manager)
-- **[E] eksctl** - Faster cluster-only deployment (VPC, EKS, node groups)
-
-### Option 2: Deploy with eksctl (Faster)
+### 2. Configure kubectl
 
 ```bash
-# 1. Set environment variables
-export AWS_REGION=us-east-1
-export EKS_CLUSTER_NAME=litellm-eks
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+kubectl cluster-info  # Verify connection
+```
 
-# 2. Deploy EKS cluster using eksctl
-cd scripts
-./deploy.sh eksctl
+### 3. Create Required Secrets
 
-# 3. Create database secret (eksctl doesn't create RDS)
+Create Okta secrets in AWS Secrets Manager ([detailed guide](docs/JWT_AUTHENTICATION_SETUP.md)):
+
+```bash
+# LiteLLM: JWT public key URL
 aws secretsmanager create-secret \
-  --name litellm/database-url \
-  --secret-string 'postgresql://user:password@your-db-host:5432/litellm' \
+  --name litellm/jwt-public-key-url \
+  --secret-string "https://<your-okta-domain>/oauth2/default/v1/keys" \
   --region $AWS_REGION
 
-# 4. Deploy applications
-./deploy.sh all
+# OpenWebUI: Session encryption, Okta client ID/secret, admin email
+# See JWT_AUTHENTICATION_SETUP.md for complete secret creation steps
 ```
 
-**Time:** ~20 minutes total
-**Best for:** Development, testing, quick setup
+**Note:** Database URL secret should already exist from Terraform/eksctl setup.
 
-### Option 3: Deploy with Terraform (Full Infrastructure)
-
-```bash
-# 1. Set environment variables
-export AWS_REGION=us-east-1
-export EKS_CLUSTER_NAME=litellm-eks
-
-# 2. Configure Terraform
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-
-# 3. Deploy full infrastructure
-cd ../scripts
-./deploy.sh terraform
-
-# 4. Deploy applications
-./deploy.sh all
-```
-
-**Time:** ~35 minutes total
-**Best for:** Production deployments, complete infrastructure control
-
-### Option 4: Complete End-to-End (Terraform)
+### 4. Deploy Applications
 
 ```bash
 cd scripts
-./deploy.sh complete
+./deploy.sh all
 ```
 
-This deploys everything: infrastructure + applications in one command.
+This deploys:
+- ✅ External Secrets Operator
+- ✅ OPA Gatekeeper + policies
+- ✅ Prometheus/Grafana monitoring
+- ✅ Jaeger distributed tracing
+- ✅ Redis cluster
+- ✅ LiteLLM proxy with JWT authentication
+- ✅ OpenWebUI with Okta OIDC
 
-## Deployment Comparison
+### 5. Verify Deployment
 
-| Feature | eksctl | Terraform |
-|---------|--------|-----------|
-| **Setup Time** | 15-20 min | 25-35 min |
-| **Configuration** | Simple YAML | Multiple .tf files |
-| **Complexity** | Low - Single file | Medium - Multiple files |
-| **VPC & Networking** | ✅ Auto-created | ✅ Custom control |
-| **EKS Cluster** | ✅ Full support | ✅ Full support |
-| **Node Groups** | ✅ Included | ✅ Included |
-| **RDS Database** | ❌ Bring your own | ✅ Included |
-| **Secrets Manager** | ⚠️ Manual setup | ✅ Automated |
-| **State Management** | N/A | ✅ S3 backend |
-| **Infrastructure as Code** | Partial | ✅ Complete |
-| **Best For** | Dev/Testing | Production |
-| **Cost** | Lower (fewer resources) | Higher (full stack) |
+```bash
+kubectl get pods -A | grep -E 'litellm|open-webui|monitoring|redis'
+kubectl get externalsecret -A  # Verify secrets synced
+```
 
-**Choose eksctl if:**
-- You need a quick development/testing environment
-- You already have a database solution
-- You prefer simpler configuration
-- You're learning Kubernetes/EKS
+### 6. Access Applications
 
-**Choose Terraform if:**
-- You need production-ready infrastructure
-- You want complete infrastructure management
-- You need RDS database provisioning
-- You require infrastructure versioning and state management
-
-### 5. Set Up Bastion for Testing
-
+**Option A: From bastion host**
 ```bash
 ./scripts/setup-bastion.sh create
-```
-
-Then connect and access services:
-
-```bash
-# Connect using the script (auto-discovers instance ID):
 ./scripts/setup-bastion.sh connect
 
-# Or manually via SSM:
-aws ssm start-session --target i-xxxxx --region $AWS_REGION
-
 # Inside bastion:
-llm-ui          # Port-forward OpenWebUI to localhost:8080
-llm-grafana     # Port-forward Grafana to localhost:3000
-llm-prometheus  # Port-forward Prometheus to localhost:9090
+llm-ui          # OpenWebUI → http://localhost:8080
+llm-grafana     # Grafana → http://localhost:3000
 ```
 
-## Manual Deployment (Without Script)
+**Option B: Port-forward from local machine**
+```bash
+# OpenWebUI
+kubectl port-forward -n open-webui svc/open-webui 8080:80
 
-If you prefer to deploy manually without using the deploy script:
+# Grafana (default: admin / prom-operator)
+kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80
+```
 
-### 1. Set Environment Variables
+---
+
+## Deployment Options
+
+The `deploy.sh` script supports granular deployment:
 
 ```bash
-export AWS_REGION=us-east-1
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export EKS_CLUSTER_NAME=my-eks-cluster
-export OIDC_PROVIDER=$(aws eks describe-cluster --name $EKS_CLUSTER_NAME --region $AWS_REGION \
-    --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
+# Full deployment
+./deploy.sh all
+
+# Infrastructure only
+./deploy.sh terraform    # or: ./deploy.sh eksctl
+
+# Individual components
+./deploy.sh irsa                 # Create IAM roles
+./deploy.sh secrets              # Create AWS secrets
+./deploy.sh external-secrets     # Deploy External Secrets Operator
+./deploy.sh redis                # Deploy Redis HA
+./deploy.sh litellm              # Deploy LiteLLM
+./deploy.sh openwebui            # Deploy OpenWebUI
+./deploy.sh monitoring           # Deploy Prometheus/Grafana
+./deploy.sh jaeger               # Deploy Jaeger
+./deploy.sh gatekeeper           # Deploy OPA Gatekeeper
+./deploy.sh verify               # Verify deployment
+
+# Complete teardown
+./deploy.sh infrastructure-destroy
 ```
 
-### 2. Create IAM Roles (IRSA)
+**Deployment Modes:**
+- **Interactive** (default): Prompts before updating existing resources
+- **Non-interactive**: `INTERACTIVE_MODE=false ./deploy.sh all`
 
-```bash
-# Create LiteLLM Bedrock role
-cat > /tmp/litellm-trust-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Federated": "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"},
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "${OIDC_PROVIDER}:aud": "sts.amazonaws.com",
-        "${OIDC_PROVIDER}:sub": "system:serviceaccount:litellm:litellm-sa"
-      }
-    }
-  }]
-}
-EOF
+📖 **See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** for detailed deployment workflows.
 
-aws iam create-role --role-name litellm-bedrock-role \
-    --assume-role-policy-document file:///tmp/litellm-trust-policy.json
-aws iam put-role-policy --role-name litellm-bedrock-role \
-    --policy-name bedrock-invoke --policy-document file://iam/litellm-bedrock-policy.json
+---
 
-# Create External Secrets role
-cat > /tmp/eso-trust-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Federated": "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"},
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "${OIDC_PROVIDER}:aud": "sts.amazonaws.com",
-        "${OIDC_PROVIDER}:sub": "system:serviceaccount:external-secrets:external-secrets"
-      }
-    }
-  }]
-}
-EOF
-
-aws iam create-role --role-name external-secrets-role \
-    --assume-role-policy-document file:///tmp/eso-trust-policy.json
-aws iam put-role-policy --role-name external-secrets-role \
-    --policy-name secrets-manager-read --policy-document file://iam/external-secrets-policy.json
-```
-
-### 3. Create Secrets in AWS Secrets Manager
-
-```bash
-# Database URL (required - use your RDS endpoint)
-aws secretsmanager create-secret --name litellm/database-url \
-    --secret-string 'postgresql://litellm:password@your-rds-endpoint:5432/litellm' \
-    --region $AWS_REGION
-
-# Master key (auto-generate)
-aws secretsmanager create-secret --name litellm/master-key \
-    --secret-string "sk-$(openssl rand -hex 32)" --region $AWS_REGION
-
-# Redis password (auto-generate)
-aws secretsmanager create-secret --name litellm/redis-password \
-    --secret-string "$(openssl rand -hex 16)" --region $AWS_REGION
-
-# Salt key (auto-generate - IMPORTANT: cannot be changed after deployment)
-aws secretsmanager create-secret --name litellm/salt-key \
-    --secret-string "$(openssl rand -hex 32)" --region $AWS_REGION
-```
-
-### 4. Update Configuration Files
-
-Replace `ACCOUNT_ID` in helm values with your actual account ID:
-
-```bash
-sed -i "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" helm-values/litellm-values.yaml
-sed -i "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/g" helm-values/external-secrets-values.yaml
-sed -i "s/us-east-1/$AWS_REGION/g" manifests/cluster-secret-store.yaml
-```
-
-### 5. Add Helm Repositories
-
-```bash
-helm repo add external-secrets https://charts.external-secrets.io
-helm repo add dandydev https://dandydeveloper.github.io/charts
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo add open-webui https://helm.openwebui.com/
-helm repo update
-```
-
-### 6. Deploy Components
-
-```bash
-# Create namespaces
-kubectl apply -f manifests/namespaces.yaml
-
-# Deploy External Secrets Operator
-helm upgrade --install external-secrets external-secrets/external-secrets \
-    -n external-secrets -f helm-values/external-secrets-values.yaml --wait
-
-# Wait for webhook to be ready
-kubectl rollout status deployment/external-secrets-webhook -n external-secrets --timeout=120s
-
-# Create secret stores and wait for them to be ready
-kubectl apply -f manifests/cluster-secret-store.yaml
-kubectl wait --for=condition=Ready clustersecretstore/aws-secrets-manager --timeout=60s
-
-# Create ExternalSecrets
-kubectl apply -f manifests/litellm-external-secret.yaml
-kubectl apply -f manifests/openwebui-external-secret.yaml
-
-# Wait for secrets to sync
-kubectl wait --for=condition=Ready externalsecret/litellm-secrets -n litellm --timeout=60s
-kubectl wait --for=condition=Ready externalsecret/openwebui-secrets -n open-webui --timeout=60s
-
-# Deploy monitoring stack
-helm upgrade --install kube-prometheus prometheus-community/kube-prometheus-stack \
-    -n monitoring -f helm-values/kube-prometheus-stack-values.yaml --wait
-
-# Deploy Redis HA (uses official Redis image)
-helm upgrade --install redis dandydev/redis-ha \
-    -n litellm -f helm-values/redis-values.yaml --wait
-
-# Deploy LiteLLM
-helm pull oci://ghcr.io/berriai/litellm-helm --untar -d /tmp/
-helm upgrade --install litellm /tmp/litellm-helm \
-    -n litellm -f helm-values/litellm-values.yaml --wait
-
-# Deploy OpenWebUI
-helm upgrade --install open-webui open-webui/open-webui \
-    -n open-webui -f helm-values/openwebui-values.yaml --wait
-```
-
-### 7. Verify Deployment
-
-```bash
-kubectl get pods -A | grep -E 'litellm|open-webui|prometheus|redis|external-secrets'
-kubectl get externalsecret -A
-```
-
-## Configuration Details
+## Configuration
 
 ### LiteLLM Models
 
-Pre-configured models in `litellm-values.yaml`:
+**Customize models:** Edit `helm-values/litellm-values.yaml`
 
-| Model Name | Bedrock Model | Max Tokens |
-|------------|---------------|------------|
-| claude-3.5-sonnet | anthropic.claude-3-5-sonnet-20241022-v2:0 | 8192 |
-| claude-3-sonnet | anthropic.claude-3-sonnet-20240229-v1:0 | 4096 |
-| claude-3-haiku | anthropic.claude-3-haiku-20240307-v1:0 | 4096 |
-| claude-3-opus | anthropic.claude-3-opus-20240229-v1:0 | 4096 |
-| llama-3.1-70b | meta.llama3-1-70b-instruct-v1:0 | 2048 |
-| llama-3.1-8b | meta.llama3-1-8b-instruct-v1:0 | 2048 |
-| mistral-large | mistral.mistral-large-2407-v1:0 | 4096 |
+### Required AWS Secrets
 
-LiteLLM image version: `v1.80.5-stable` (pinned for stability)
+| Secret Name | Description | Created By |
+|-------------|-------------|------------|
+| `litellm/database-url` | PostgreSQL connection string | Manual |
+| `litellm/jwt-public-key-url` | Okta JWKS endpoint | Manual |
+| `litellm/master-key` | LiteLLM admin key | deploy.sh |
+| `litellm/salt-key` | DB encryption salt (immutable) | deploy.sh |
+| `litellm/redis-password` | Redis password | deploy.sh |
+| `openwebui/webui-secret-key` | Session encryption | Manual |
+| `openwebui/okta-openid-url` | Okta OpenID discovery URL | Manual |
+| `openwebui/okta-client-id` | Okta app client ID | Manual |
+| `openwebui/okta-client-secret` | Okta app client secret | Manual |
+| `openwebui/admin-email` | Admin user emails | Manual |
 
-### Secrets Required
+📖 **See [JWT Authentication Setup](docs/JWT_AUTHENTICATION_SETUP.md)** for detailed secret creation.
 
-Create these in AWS Secrets Manager before deployment:
+---
 
-| Secret Name | Description | Auto-Generated |
-|-------------|-------------|----------------|
-| `litellm/database-url` | PostgreSQL connection string | No (must create manually) |
-| `litellm/master-key` | LiteLLM admin key | Yes |
-| `litellm/redis-password` | Redis password | Yes |
-| `litellm/salt-key` | Salt key for secure hashing (cannot be changed after deployment) | Yes |
-
-The deploy script auto-generates `master-key`, `redis-password`, and `salt-key` if they don't exist. You must create `database-url` manually before running the deployment.
-
-### IAM Roles
-
-Two IRSA roles are created:
-
-1. **litellm-bedrock-role** - Allows LiteLLM to invoke Bedrock models
-2. **external-secrets-role** - Allows ESO to read from Secrets Manager
-
-## MCP Server Deployment
-
-Model Context Protocol (MCP) servers can be deployed as in-cluster pods to provide tools and capabilities to AI models. MCP servers enable access to external data sources (GitHub, S3), system operations (CLI, Docker), and third-party APIs (Slack, Jira).
-
-See [docs/MCP_DEPLOYMENT.md](docs/MCP_DEPLOYMENT.md) for:
-- Deployment requirements and best practices
-- Complete annotated example (GitHub MCP server)
-- Security configuration (IRSA, secrets, network policies)
-- Monitoring integration (Prometheus, Jaeger)
-
-## Accessing Services
-
-From the bastion instance:
-
-| Service | Command | URL |
-|---------|---------|-----|
-| OpenWebUI | `kubectl port-forward svc/open-webui 8080:80 -n open-webui --address 0.0.0.0` | http://localhost:8080 |
-| Grafana | `kubectl port-forward svc/kube-prometheus-grafana 3000:80 -n monitoring --address 0.0.0.0` | http://localhost:3000 |
-| Prometheus | `kubectl port-forward svc/kube-prometheus-kube-prome-prometheus 9090:9090 -n monitoring --address 0.0.0.0` | http://localhost:9090 |
-| Jaeger UI | `kubectl port-forward svc/jaeger-query 16686:16686 -n monitoring --address 0.0.0.0` | http://localhost:16686 |
-
-## Observability
-
-The stack includes comprehensive observability with metrics, tracing, and dashboards.
-
-### Prometheus Metrics
-
-LiteLLM exposes metrics at `/metrics`:
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `litellm_proxy_total_requests_metric` | Counter | Total requests by model, user, status |
-| `litellm_proxy_failed_requests_metric` | Counter | Failed requests with exception details |
-| `litellm_spend_metric` | Counter | Token spend by model/user |
-| `litellm_total_tokens_metric` | Counter | Total tokens (input + output) |
-| `litellm_request_total_latency_metric` | Histogram | Request latency percentiles |
-| `litellm_llm_api_time_to_first_token_metric` | Histogram | Time to first token (streaming) |
-| `litellm_deployment_state` | Gauge | Model health (0=healthy, 1=partial, 2=outage) |
-| `litellm_redis_latency` | Histogram | Redis operation latency |
-
-### Distributed Tracing (OpenTelemetry + Jaeger)
-
-LiteLLM is configured to export traces via OpenTelemetry to Jaeger. This enables:
-
-- **End-to-end request tracing** - See the full journey from OpenWebUI → LiteLLM → Bedrock
-- **Latency breakdown** - Identify bottlenecks in the request pipeline
-- **Error debugging** - Trace failed requests to their root cause
-
-Access Jaeger UI at `http://localhost:16686` (after port-forward).
+## Monitoring & Observability
 
 ### Grafana Dashboards
 
-Pre-installed dashboards:
+Access: `kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80`
 
-| Dashboard | Description |
-|-----------|-------------|
-| **LiteLLM Proxy** | Request rates, latency, token usage, model health, spend |
-| **Kubernetes / Compute Resources** | Default K8s cluster dashboards |
-| **Node Exporter** | Host-level metrics |
+### Prometheus Metrics
 
-Additional dashboards from LiteLLM:
-https://github.com/BerriAI/litellm/tree/main/cookbook/misc/grafana_dashboard
+Access: `kubectl port-forward -n monitoring svc/kube-prometheus-kube-prome-prometheus 9090:9090`
 
-### Datasources in Grafana
+### Jaeger Tracing
 
-- **Prometheus** - Metrics (auto-configured)
-- **Jaeger** - Distributed traces
+Access: `kubectl port-forward -n monitoring svc/jaeger-query 16686:16686`
+
+---
+
+## Advanced Features
+
+### Model Context Protocol (MCP) Servers
+
+📖 **See [MCP Deployment Guide](docs/MCP_DEPLOYMENT.md)** for deployment patterns and examples.
+
+📖 **See [MCP Operator Architecture](docs/MCP_OPERATOR_ARCHITECTURE.md)** for Kubernetes operator design.
+
+### Container Registry (ECR)
+
+📖 **See [ECR Setup Guide](docs/ECR_SETUP.md)** for detailed configuration.
+
+### OPA Gatekeeper Policies
+
+Security policies automatically enforced:
+
+- ✅ Approved container registries only
+- ✅ No `:latest` image tags
+- ✅ Container resource limits required
+- ✅ Non-root containers only
+- ✅ Required labels and probes
+
+[View policies](/manifests/opa-policies/)
+
+---
+
+## Troubleshooting
+
+### Quick Diagnostics
+
+```bash
+# Check all pods
+kubectl get pods -A | grep -E 'litellm|open-webui|monitoring|redis'
+
+# Check External Secrets sync
+kubectl get externalsecret -A
+kubectl describe externalsecret litellm-secrets -n litellm
+
+# Check LiteLLM logs
+kubectl logs -n litellm -l app.kubernetes.io/name=litellm --tail=100
+
+# Check OpenWebUI logs
+kubectl logs -n open-webui -l app.kubernetes.io/name=open-webui --tail=100
+```
+
+📖 **See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#troubleshooting)** for comprehensive troubleshooting.
+
+---
 
 ## Cleanup
 
 ```bash
-# Delete bastion (also accepts 'delete')
+# Delete bastion host
 ./scripts/setup-bastion.sh cleanup
 
-# Delete Helm releases
+# Delete applications
 helm uninstall open-webui -n open-webui
 helm uninstall litellm -n litellm
 helm uninstall redis -n litellm
@@ -547,118 +321,26 @@ helm uninstall jaeger -n monitoring
 helm uninstall kube-prometheus -n monitoring
 helm uninstall external-secrets -n external-secrets
 
-# Delete namespaces
-kubectl delete -f manifests/namespaces.yaml
-
-# Delete IAM roles (optional)
-aws iam delete-role-policy --role-name litellm-bedrock-role --policy-name bedrock-invoke
-aws iam delete-role --role-name litellm-bedrock-role
-aws iam delete-role-policy --role-name external-secrets-role --policy-name secrets-manager-read
-aws iam delete-role --role-name external-secrets-role
-```
-
-## Troubleshooting
-
-### Secrets not syncing
-
-```bash
-kubectl describe externalsecret litellm-secrets -n litellm
-kubectl logs -l app.kubernetes.io/name=external-secrets -n external-secrets
-```
-
-### LiteLLM not starting
-
-```bash
-kubectl logs -l app.kubernetes.io/name=litellm -n litellm
-kubectl describe pod -l app.kubernetes.io/name=litellm -n litellm
-```
-
-### Bedrock access denied
-
-1. Verify IRSA role has correct trust policy
-2. Check Bedrock model access is enabled in AWS console
-3. Verify service account annotation matches role ARN
-
-```bash
-kubectl get sa litellm-sa -n litellm -o yaml
-```
-
-## Documentation
-
-### Getting Started
-- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Complete step-by-step deployment walkthrough
-- **[scripts/README.md](scripts/README.md)** - Deployment script usage and options
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Git workflow and contribution guidelines
-
-### Infrastructure Options
-- **[eksctl/README.md](eksctl/README.md)** - eksctl deployment guide (quick setup)
-- **[terraform/README.md](terraform/README.md)** - Terraform deployment guide (production)
-
-### Advanced Features
-- **[ECR_SETUP.md](docs/ECR_SETUP.md)** - Container registry setup and usage
-- **[MCP_DEPLOYMENT.md](docs/MCP_DEPLOYMENT.md)** - Deploy Model Context Protocol servers
-- **[JWT_AUTHENTICATION_SETUP.md](docs/JWT_AUTHENTICATION_SETUP.md)** - Okta/JWT authentication setup
-- **[OPA Policies](manifests/opa-policies/README.md)** - Security policy documentation
-- **[Security Architecture](security/ARCHITECTURE.md)** - Security design and best practices
-
-## Common Workflows
-
-### Development/Testing Setup
-```bash
-# Use eksctl for faster setup
-./scripts/deploy.sh eksctl
-./scripts/deploy.sh all
-```
-
-### Production Setup
-```bash
-# Use Terraform for complete infrastructure
-./scripts/deploy.sh terraform
-./scripts/deploy.sh all
-```
-
-### Update Applications Only
-```bash
-# Update specific components
-./scripts/deploy.sh litellm
-./scripts/deploy.sh openwebui
-```
-
-### Complete Teardown
-```bash
-# Destroy everything (auto-detects Terraform or eksctl)
+# Delete infrastructure
 ./scripts/deploy.sh infrastructure-destroy
 ```
 
-## Future Enhancements
+---
 
-### Observability
-- [ ] **Loki Integration** - Centralized log aggregation and querying
-- [ ] **Grafana Tempo** - Long-term trace storage (Jaeger currently uses in-memory)
-- [ ] **Alertmanager Integration** - Slack/PagerDuty notifications for critical alerts
-- [ ] **Custom Dashboards** - Additional Grafana dashboards for business metrics
+## Contributing
 
-### Scalability & Performance
-- [ ] **Horizontal Pod Autoscaling** - Auto-scale LiteLLM based on CPU/memory/custom metrics
-- [ ] **Cluster Autoscaler** - Auto-scale EKS nodes based on demand
-- [ ] **Multi-AZ Redis** - Distribute Redis across availability zones
-- [ ] **CDN Integration** - CloudFront for static asset delivery
+See [CONTRIBUTING.md](CONTRIBUTING.md) for git workflow and contribution guidelines.
 
-### Security
-- [ ] **Network Policies** - Fine-grained pod-to-pod network security
-- [ ] **Service Mesh** - Istio/Linkerd for mTLS and advanced traffic management
-- [ ] **WAF Integration** - AWS WAF for application-layer protection
-- [ ] **Secrets Rotation** - Automated secret rotation via AWS Secrets Manager
-- [ ] **Pod Security Standards** - Enforce restricted security policies
+## Additional Resources
 
-### Developer Experience
-- [ ] **GitOps** - ArgoCD or FluxCD for declarative deployments
-- [ ] **CI/CD Pipeline** - GitHub Actions workflows for automated deployments
-- [ ] **Local Development** - Kind/minikube setup for local testing
-- [ ] **Staging Environment** - Separate environment for pre-production testing
+### External Documentation
+- [LiteLLM Documentation](https://docs.litellm.ai/)
+- [OpenWebUI Documentation](https://docs.openwebui.com/)
+- [AWS Bedrock Models](https://aws.amazon.com/bedrock/claude/)
+- [OPA Gatekeeper](https://open-policy-agent.github.io/gatekeeper/)
+- [External Secrets Operator](https://external-secrets.io/)
 
-### Features
-- [ ] **Multi-Region Deployment** - Active-active or active-passive regional setup
-- [ ] **Rate Limiting** - Per-user/per-model rate limiting
-- [ ] **Cost Tracking** - Enhanced cost allocation and budgeting
-- [ ] **Model Fine-tuning** - Integration with SageMaker for custom models
+### Related Guides
+- [Script Usage](scripts/README.md)
+- [Security Architecture](security/ARCHITECTURE.md)
+- [OPA Policies](manifests/opa-policies/README.md)
