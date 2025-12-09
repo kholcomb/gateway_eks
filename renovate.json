@@ -152,7 +152,6 @@
         "docker"
       ],
       "automerge": false,
-      "separateMinorPatch": true,
       "schedule": [
         "before 6am on monday"
       ]
@@ -249,9 +248,6 @@
       "security",
       "dependencies"
     ],
-    "assignees": [
-      "@renovate-bot"
-    ],
     "automerge": false
   },
   "separateMajorMinor": true,
@@ -265,8 +261,9 @@
       "^helm-values/.*\\.ya?ml$"
     ]
   },
-  "regexManagers": [
+  "customManagers": [
     {
+      "customType": "regex",
       "description": "Update Docker images without repository/tag structure (image: repo, tag: version format)",
       "fileMatch": [
         "^helm-values/.*\\.yaml$"
