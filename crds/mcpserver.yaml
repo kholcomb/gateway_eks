@@ -264,7 +264,7 @@ spec:
                           default: true
 
                         required:
-                          description: 'Reject requests without user context (recommended for restricted data)'
+                          description: 'Reject requests without user context (STRONGLY RECOMMENDED: set to true when dataClassification is "confidential" or "restricted" for security and audit compliance)'
                           type: boolean
                           default: false
 
