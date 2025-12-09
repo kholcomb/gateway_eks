@@ -1,6 +1,67 @@
 # LiteLLM + OpenWebUI Deployment Guide
 
-Complete step-by-step guide for deploying LiteLLM proxy with OpenWebUI on Amazon EKS.
+## Overview
+
+This guide walks you through deploying a production-ready LiteLLM proxy with OpenWebUI frontend on Amazon EKS, featuring:
+
+- **JWT Authentication**: Client-agnostic authentication via Okta OIDC
+- **AWS Bedrock Integration**: Access to Claude, Llama, and other models
+- **High Availability**: Redis HA, multi-replica deployments
+- **Observability**: Prometheus, Grafana, Jaeger distributed tracing
+- **Security**: OPA Gatekeeper policies, IRSA, encrypted secrets
+- **MCP Server Support**: Deploy Model Context Protocol servers for extended AI capabilities
+
+> **Note**: This guide focuses on application deployment. For infrastructure setup (EKS cluster, VPC, RDS), see the [main README](../README.md) for Terraform deployment instructions.
+
+## Architecture
+
+```mermaid
+graph TB
+    User[User] -->|Authenticates| Okta[Okta OIDC]
+    Okta -->|JWT Token| OpenWebUI[OpenWebUI Frontend]
+    OpenWebUI -->|API Requests + JWT| LiteLLM[LiteLLM Proxy]
+    LiteLLM -->|Validates JWT| Okta
+    LiteLLM -->|Model Requests| Bedrock[AWS Bedrock<br/>Claude, Llama, Mistral]
+    LiteLLM -->|Caching| Redis[Redis HA Cluster]
+    LiteLLM -->|Metrics| Prometheus[Prometheus]
+    LiteLLM -->|Traces| Jaeger[Jaeger]
+    OpenWebUI -->|Session Data| PostgreSQL[PostgreSQL RDS]
+    Prometheus -->|Visualization| Grafana[Grafana Dashboards]
+
+    subgraph "EKS Cluster"
+        OpenWebUI
+        LiteLLM
+        Redis
+        Prometheus
+        Grafana
+        Jaeger
+    end
+
+    subgraph "AWS Services"
+        Bedrock
+        PostgreSQL
+        Okta
+    end
+
+    style LiteLLM fill:#326CE5
+    style OpenWebUI fill:#61DAFB
+    style Bedrock fill:#FF9900
+    style Okta fill:#007DC1
+```
+
+## Prerequisites
+
+### 1. AWS Infrastructure
+
+The following must be deployed before running this deployment:
+
+- **EKS cluster** (via Terraform - see [README.md](../README.md))
+- **PostgreSQL database** (RDS from Terraform, or external)
+- **VPC with private subnets** (created by infrastructure deployment)
+- **AWS Secrets Manager** enabled in your region
+- (Optional) **Bastion host** for kubectl access and testing
+
+### 2. Local Tools
 
 **Prerequisites:** Ensure you've completed the [infrastructure deployment](../README.md#prerequisites) (eksctl or Terraform) and have kubectl configured.
 

@@ -329,6 +329,8 @@ helm uninstall external-secrets -n external-secrets
 
 ## Contributing
 
+### Infrastructure
+- **[terraform/README.md](terraform/README.md)** - Terraform deployment guide
 See [CONTRIBUTING.md](CONTRIBUTING.md) for git workflow and contribution guidelines.
 
 ## Additional Resources

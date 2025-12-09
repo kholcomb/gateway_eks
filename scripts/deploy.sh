@@ -543,7 +543,7 @@ verify_helm_release() {
 check_prerequisites() {
     log "Checking prerequisites..."
 
-    for cmd in aws kubectl helm eksctl; do
+    for cmd in aws kubectl helm; do
         if ! command -v "$cmd" &> /dev/null; then
             error "$cmd is required but not installed"
         fi
@@ -1498,247 +1498,10 @@ verify_deployment() {
 # Infrastructure Provisioning Functions
 # ============================================================================
 
-# Deploy infrastructure using eksctl
-deploy_infrastructure_eksctl() {
-    log "Deploying infrastructure using eksctl..."
-
-    local eksctl_dir="$BASE_DIR/eksctl"
-
-    # Check if eksctl directory exists
-    if [[ ! -d "$eksctl_dir" ]]; then
-        error "eksctl directory not found: $eksctl_dir"
-    fi
-
-    # Check if eksctl is installed
-    if ! command -v eksctl &> /dev/null; then
-        error "eksctl is not installed. Please install eksctl: https://eksctl.io/installation/"
-    fi
-
-    # Check eksctl version
-    local eksctl_version
-    eksctl_version=$(eksctl version 2>/dev/null)
-    log "eksctl version: $eksctl_version"
-
-    # Check if cluster.yaml exists
-    if [[ ! -f "$eksctl_dir/cluster.yaml" ]]; then
-        error "cluster.yaml not found in $eksctl_dir"
-    fi
-
-    # Check if cluster already exists
-    if check_eks_cluster_exists "$EKS_CLUSTER_NAME"; then
-        echo ""
-        warn "EKS cluster '$EKS_CLUSTER_NAME' already exists"
-        echo ""
-
-        if is_interactive; then
-            echo "What would you like to do?"
-            echo "  [S] Skip - Use existing cluster"
-            echo "  [U] Update - Update existing cluster configuration"
-            echo "  [D] Delete and recreate - Delete existing cluster and create new one"
-            echo "  [Q] Quit - Exit deployment"
-            echo ""
-
-            while true; do
-                read -p "Choose [S/u/d/q]: " -n 1 -r choice
-                echo ""
-
-                case "${choice,,}" in
-                    s|"")
-                        log "Using existing EKS cluster"
-                        return 0
-                        ;;
-                    u)
-                        log "Updating existing EKS cluster configuration..."
-                        break
-                        ;;
-                    d)
-                        warn "This will DELETE the existing cluster and all its resources!"
-                        read -p "Type 'delete' to confirm: " -r confirm
-                        if [[ "$confirm" == "delete" ]]; then
-                            destroy_infrastructure_eksctl
-                            # Continue to create new cluster
-                            break
-                        else
-                            log "Deletion cancelled"
-                            return 0
-                        fi
-                        ;;
-                    q)
-                        log "Deployment cancelled by user"
-                        exit 0
-                        ;;
-                    *)
-                        echo "Invalid choice. Please choose S, U, D, or Q."
-                        continue
-                        ;;
-                esac
-            done
-        else
-            log "Cluster already exists, skipping creation"
-            return 0
-        fi
-    fi
-
-    # Create temp cluster config with environment variable substitution
-    log "Preparing cluster configuration..."
-    local temp_config="/tmp/eksctl-cluster-${EKS_CLUSTER_NAME}.yaml"
-
-    # Substitute environment variables in the config
-    export EKS_CLUSTER_NAME AWS_REGION AWS_ACCOUNT_ID ENVIRONMENT
-    envsubst < "$eksctl_dir/cluster.yaml" > "$temp_config"
-
-    # Validate the configuration
-    log "Validating cluster configuration..."
-    if ! eksctl create cluster --dry-run -f "$temp_config" &> /dev/null; then
-        error "eksctl configuration validation failed. Please check $temp_config"
-    fi
-
-    # Show the plan
-    log "Cluster configuration plan:"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Cluster Name: $EKS_CLUSTER_NAME"
-    echo "  Region: $AWS_REGION"
-    echo "  Account: $AWS_ACCOUNT_ID"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-
-    # Confirm creation
-    if is_interactive; then
-        warn "This will create AWS infrastructure including VPC, EKS cluster, and node groups."
-        echo ""
-        read -p "Proceed with cluster creation? [y/N]: " -r confirm
-
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            log "Cluster creation cancelled"
-            rm -f "$temp_config"
-            exit 0
-        fi
-    fi
-
-    # Create the cluster
-    log "Creating EKS cluster (this may take 15-20 minutes)..."
-    if eksctl create cluster -f "$temp_config"; then
-        log "EKS cluster created successfully!"
-    else
-        error "eksctl cluster creation failed"
-    fi
-
-    # Clean up temp config
-    rm -f "$temp_config"
-
-    # Configure kubectl
-    log "Configuring kubectl..."
-    aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" || error "Failed to configure kubectl"
-
-    # Verify kubectl connection
-    if kubectl cluster-info &> /dev/null; then
-        log "kubectl configured and connected successfully"
-    else
-        error "kubectl cannot connect to cluster"
-    fi
-
-    # Create namespaces immediately (needed for service accounts)
-    log "Creating required Kubernetes namespaces..."
-    kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f - || true
-    kubectl create namespace litellm --dry-run=client -o yaml | kubectl apply -f - || true
-
-    log "Infrastructure deployment via eksctl complete!"
-    echo ""
-    log "Next steps:"
-    log "1. Verify cluster: kubectl get nodes"
-    log "2. Deploy applications: $BASE_DIR/scripts/deploy.sh all"
-    echo ""
-}
-
-# Destroy infrastructure using eksctl
-destroy_infrastructure_eksctl() {
-    log "Destroying infrastructure using eksctl..."
-
-    if ! command -v eksctl &> /dev/null; then
-        error "eksctl is not installed"
-    fi
-
-    # Check if cluster exists
-    if ! check_eks_cluster_exists "$EKS_CLUSTER_NAME"; then
-        warn "EKS cluster '$EKS_CLUSTER_NAME' does not exist"
-        return 0
-    fi
-
-    # Confirm destruction
-    echo ""
-    warn "⚠️  WARNING: This will DESTROY the EKS cluster and all its resources!"
-    echo "This includes:"
-    echo "  - EKS cluster and all workloads"
-    echo "  - Node groups and EC2 instances"
-    echo "  - VPC and networking (if created by eksctl)"
-    echo "  - Service accounts and IAM roles"
-    echo ""
-
-    if is_interactive; then
-        read -p "Type 'destroy' to confirm destruction: " -r confirm
-
-        if [[ "$confirm" != "destroy" ]]; then
-            log "Destruction cancelled"
-            exit 0
-        fi
-
-        read -p "Are you absolutely sure? [y/N]: " -r confirm2
-        if [[ ! "$confirm2" =~ ^[Yy]$ ]]; then
-            log "Destruction cancelled"
-            exit 0
-        fi
-    fi
-
-    # Delete the cluster
-    log "Deleting EKS cluster (this may take 10-15 minutes)..."
-    if eksctl delete cluster --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --wait; then
-        log "EKS cluster destroyed successfully"
-    else
-        error "eksctl cluster deletion failed"
-    fi
-}
-
-# Interactive infrastructure deployment - choose between Terraform and eksctl
+# Interactive infrastructure deployment
 deploy_infrastructure_interactive() {
-    log "Infrastructure Deployment"
-    echo ""
-    echo "Choose your deployment method:"
-    echo ""
-    echo "  [T] Terraform - Full infrastructure (VPC, EKS, RDS, Secrets Manager)"
-    echo "                  More control, includes database, better for production"
-    echo ""
-    echo "  [E] eksctl    - EKS cluster only (VPC, EKS, node groups)"
-    echo "                  Faster setup, cluster-focused, simpler configuration"
-    echo ""
-    echo "  [Q] Quit      - Exit"
-    echo ""
-
-    while true; do
-        read -p "Choose deployment method [T/e/q]: " -n 1 -r choice
-        echo ""
-
-        case "${choice,,}" in
-            t|"")
-                log "Selected: Terraform deployment"
-                deploy_infrastructure
-                return 0
-                ;;
-            e)
-                log "Selected: eksctl deployment"
-                deploy_infrastructure_eksctl
-                return 0
-                ;;
-            q)
-                log "Deployment cancelled by user"
-                exit 0
-                ;;
-            *)
-                echo "Invalid choice. Please choose T, E, or Q."
-                continue
-                ;;
-        esac
-    done
+    log "Deploying infrastructure using Terraform..."
+    deploy_infrastructure
 }
 
 # Verify infrastructure components exist
@@ -1926,9 +1689,9 @@ list_components() {
     cat << 'COMPONENTS'
 Available Components:
 
-INFRASTRUCTURE DEPLOYMENT OPTIONS:
+INFRASTRUCTURE DEPLOYMENT (Terraform):
 
-Option 1: Terraform (Full Infrastructure)
+Terraform (Full Infrastructure)
   ├─ vpc                  VPC, subnets, NAT gateways, route tables
   ├─ eks                  EKS cluster, node groups, OIDC provider
   ├─ rds                  PostgreSQL database (Multi-AZ)
@@ -1937,25 +1700,6 @@ Option 1: Terraform (Full Infrastructure)
   └─ bastion              (Optional) EC2 bastion for testing
 
   Use: ./deploy.sh terraform
-
-  Pros: Full infrastructure control, includes RDS database, production-ready
-  Cons: More complex, requires terraform.tfvars configuration
-
-Option 2: eksctl (EKS Cluster Only)
-  ├─ vpc                  VPC, subnets, NAT gateways, route tables
-  ├─ eks                  EKS cluster, node groups, OIDC provider
-  ├─ iam                  IAM service accounts (IRSA) for pods
-  └─ addons               VPC CNI, CoreDNS, kube-proxy, EBS CSI driver
-
-  Use: ./deploy.sh eksctl
-
-  Pros: Faster setup, simpler configuration, cluster-focused
-  Cons: No RDS (requires external database), fewer infrastructure components
-
-Interactive Mode:
-  Use: ./deploy.sh infrastructure
-
-  The script will prompt you to choose between Terraform and eksctl
 
 APPLICATION (Kubernetes):
   ├─ namespaces           Kubernetes namespaces
@@ -1972,9 +1716,8 @@ APPLICATION (Kubernetes):
   └─ openwebui            OpenWebUI frontend (requires LiteLLM)
 
 DEPLOYMENT MODES:
-  ├─ infrastructure       Interactive - Choose Terraform or eksctl
+  ├─ infrastructure       Deploy infrastructure using Terraform
   ├─ terraform            Deploy full infrastructure (Terraform)
-  ├─ eksctl               Deploy EKS cluster only (eksctl)
   ├─ all                  Deploy all applications (Kubernetes)
   ├─ complete             Deploy infrastructure + applications
   └─ <component>          Deploy specific component
@@ -2245,30 +1988,14 @@ main() {
         infra-terraform|infrastructure-terraform|terraform)
             deploy_infrastructure
             ;;
-        infra-eksctl|infrastructure-eksctl|eksctl)
-            deploy_infrastructure_eksctl
-            ;;
         infra-plan|infrastructure-plan)
             plan_infrastructure
             ;;
         infra-verify|infrastructure-verify|verify-infra)
             verify_infrastructure
             ;;
-        infra-destroy|infrastructure-destroy)
-            # Detect which tool was used and destroy accordingly
-            if kubectl get configmap -n kube-system eksctl-cluster-info &>/dev/null; then
-                log "Detected eksctl-managed cluster, using eksctl destroy"
-                destroy_infrastructure_eksctl
-            else
-                log "Using Terraform destroy"
-                destroy_infrastructure
-            fi
-            ;;
-        infra-destroy-terraform|infrastructure-destroy-terraform)
+        infra-destroy|infrastructure-destroy|infrastructure-destroy-terraform)
             destroy_infrastructure
-            ;;
-        infra-destroy-eksctl|infrastructure-destroy-eksctl)
-            destroy_infrastructure_eksctl
             ;;
         complete|full)
             deploy_complete
@@ -2372,14 +2099,11 @@ USAGE:
     ./deploy.sh [COMMAND]
 
 INFRASTRUCTURE COMMANDS:
-    infrastructure, infra             Interactive - Choose between Terraform or eksctl
+    infrastructure, infra             Deploy infrastructure using Terraform
     infrastructure-terraform, terraform Deploy using Terraform (VPC, EKS, RDS, Secrets Manager)
-    infrastructure-eksctl, eksctl     Deploy using eksctl (VPC, EKS, node groups only)
-    infrastructure-plan, infra-plan   Show Terraform infrastructure changes (Terraform only)
+    infrastructure-plan, infra-plan   Show Terraform infrastructure changes
     infrastructure-verify, infra-verify Verify infrastructure components exist
-    infrastructure-destroy            Auto-detect and destroy infrastructure (Terraform or eksctl)
-    infrastructure-destroy-terraform  Destroy Terraform-managed infrastructure
-    infrastructure-destroy-eksctl     Destroy eksctl-managed cluster
+    infrastructure-destroy            Destroy Terraform-managed infrastructure
     complete, full                    Deploy infrastructure + configure kubectl + deploy apps
 
 APPLICATION DEPLOYMENT COMMANDS (Kubernetes):
@@ -2411,11 +2135,8 @@ ENVIRONMENT VARIABLES:
     SKIP_ALL              Skip all prompts in non-interactive mode (default: false)
 
 EXAMPLES:
-    # Interactive deployment - choose Terraform or eksctl
+    # Deploy infrastructure using Terraform
     ./deploy.sh infrastructure
-
-    # Deploy using eksctl (faster, cluster-focused)
-    ./deploy.sh eksctl
 
     # Deploy using Terraform (full infrastructure with RDS)
     ./deploy.sh terraform
@@ -2440,7 +2161,7 @@ EXAMPLES:
     ./deploy.sh litellm
     ./deploy.sh openwebui
 
-    # Destroy infrastructure (auto-detects Terraform vs eksctl)
+    # Destroy infrastructure
     ./deploy.sh infrastructure-destroy
 
     # Non-interactive deployment
