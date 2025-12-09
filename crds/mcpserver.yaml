@@ -46,7 +46,15 @@ spec:
                 # Server Type
                 # ============================================================================
                 type:
-                  description: 'Type of MCP server: external-saas, aws-service, or internal-api'
+                  description: |
+                    Type of MCP server deployment pattern:
+                    - external-saas: Integrates with external SaaS APIs (GitHub, Stripe, Slack, etc.)
+                      Common capabilities: external-api, saas-integration, web-scraping
+                    - aws-service: Interfaces with AWS services (S3, DynamoDB, Lambda, etc.)
+                      Common capabilities: file-storage-read/write, database-read/write, cloud-resource-management
+                    - internal-api: Internal company services and databases
+                      Common capabilities: database-read/write, code-execution, authentication
+                    Note: Types are guidelines for deployment patterns; capabilities may overlap (e.g., internal-api calling external APIs)
                   type: string
                   enum:
                     - external-saas
@@ -106,7 +114,14 @@ spec:
                       default: normal
 
                     capabilities:
-                      description: 'Functional capabilities provided by this MCP server (for discovery and policy)'
+                      description: |
+                        Functional capabilities provided by this MCP server (for discovery and policy).
+                        Typical capability/type alignments:
+                        - kubernetes-access, cloud-resource-management: Typically internal-api or aws-service, should NOT be external-saas
+                        - secret-management, credential-access: Typically internal-api only (OPA enforces restrictions)
+                        - external-api, saas-integration, web-scraping: Typically external-saas
+                        - database-read/write, file-storage-read/write: Typically aws-service or internal-api
+                        Note: Multiple capabilities can be declared; validation is primarily for security policies
                       type: array
                       items:
                         type: string
