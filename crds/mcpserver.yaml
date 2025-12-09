@@ -164,6 +164,133 @@ spec:
                       uniqueItems: true
 
                 # ============================================================================
+                # Authentication & Authorization (Zero Trust Model)
+                # ============================================================================
+                authentication:
+                  description: Authentication configuration (required for zero trust)
+                  type: object
+                  required:
+                    - inbound
+                  properties:
+                    # How clients authenticate TO this MCP server
+                    inbound:
+                      description: 'How clients (LiteLLM proxy) authenticate to this server (required)'
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        type:
+                          description: 'Authentication method (zero trust - no unauthenticated access)'
+                          type: string
+                          enum:
+                            - mtls              # Mutual TLS via service mesh (recommended)
+                            - bearer-token      # Shared secret/API key
+                            - service-account   # Kubernetes ServiceAccount JWT
+                          default: mtls
+
+                        tokenSecretRef:
+                          description: 'Secret containing bearer token (required if type=bearer-token)'
+                          type: object
+                          required:
+                            - name
+                          properties:
+                            name:
+                              type: string
+                              description: 'Kubernetes Secret name'
+                            key:
+                              type: string
+                              description: 'Key within the secret'
+                              default: token
+
+                        allowedServiceAccounts:
+                          description: 'Allowed K8s ServiceAccounts (required if type=service-account)'
+                          type: array
+                          items:
+                            type: string
+                            pattern: '^[a-z0-9-]+:[a-z0-9-]+$'  # namespace:serviceaccount
+                          minItems: 1
+                          example:
+                            - litellm:litellm-proxy
+
+                    # How this MCP server authenticates to external services
+                    outbound:
+                      description: 'How this server authenticates to external services'
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - service
+                          - method
+                        properties:
+                          service:
+                            description: 'Service identifier (github, stripe, database, etc.)'
+                            type: string
+                          method:
+                            description: 'Authentication method'
+                            type: string
+                            enum:
+                              - api-key
+                              - oauth2
+                              - basic-auth
+                              - aws-iam
+                              - mtls
+                              - service-account-token
+                          secretRef:
+                            description: 'Reference to secret containing credentials'
+                            type: object
+                            required:
+                              - name
+                            properties:
+                              name:
+                                type: string
+                              keys:
+                                type: object
+                                description: 'Mapping of credential fields to secret keys'
+                                additionalProperties:
+                                  type: string
+                                example:
+                                  apiKey: api_key
+                                  clientId: client_id
+                                  clientSecret: client_secret
+
+                    # End-user context propagation
+                    userContext:
+                      description: 'End-user context propagation for audit and access control'
+                      type: object
+                      properties:
+                        enabled:
+                          description: 'Enable user context propagation from LiteLLM'
+                          type: boolean
+                          default: true
+
+                        required:
+                          description: 'Reject requests without user context (recommended for restricted data)'
+                          type: boolean
+                          default: false
+
+                        auditLogging:
+                          description: 'Log user context for audit trail'
+                          type: boolean
+                          default: true
+
+                        headers:
+                          description: 'HTTP headers containing user context'
+                          type: object
+                          properties:
+                            userId:
+                              description: 'Header name for user ID'
+                              type: string
+                              default: X-User-Id
+                            userGroups:
+                              description: 'Header name for user groups'
+                              type: string
+                              default: X-User-Groups
+                            tenantId:
+                              description: 'Header name for tenant/org ID'
+                              type: string
+                              default: X-Tenant-Id
+
+                # ============================================================================
                 # MCP Transport Configuration (per MCP Spec)
                 # ============================================================================
                 transport:
