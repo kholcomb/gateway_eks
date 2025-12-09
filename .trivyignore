@@ -70,3 +70,68 @@ AVD-AWS-0031
 # Making them more restrictive would break legitimate image pulls.
 # Related files: manifests/opa-policies/constraints/allowed-repos.yaml
 AVD-KSV-0124
+
+# ==============================================================================
+# CloudWatch Logs - Encryption Configuration
+# ==============================================================================
+
+# AVD-AWS-0017: CloudWatch log groups use AWS-managed encryption by default
+# Reason: CloudWatch log groups are encrypted by default using AWS-managed keys.
+# Using customer-managed KMS CMKs would provide additional key rotation control
+# but adds operational complexity and cost for minimal security benefit.
+#
+# Security controls in place:
+#   - All log groups are encrypted at rest (AWS default)
+#   - Retention periods are configured to limit data exposure
+#   - IAM policies restrict access to log groups
+#
+# If CMK encryption is required for compliance, add kms_key_id parameter
+# Related files: terraform/modules/eks/main.tf:387, terraform/modules/vpc/main.tf:220
+AVD-AWS-0017
+
+# ==============================================================================
+# RDS Database Authentication
+# ==============================================================================
+
+# AVD-AWS-0176: RDS uses Secrets Manager instead of IAM database authentication
+# Reason: The RDS instance uses AWS Secrets Manager for credential management
+# with automatic rotation, which provides secure database access without IAM auth.
+#
+# Security controls in place:
+#   - Secrets Manager manages master password (manage_master_user_password = true)
+#   - Automatic secret rotation via Secrets Manager
+#   - Secrets encrypted with KMS (master_user_secret_kms_key_id set)
+#   - Database is not publicly accessible (publicly_accessible = false)
+#   - TLS/SSL enforced via parameter group
+#
+# IAM authentication adds token-based access but increases complexity.
+# Current approach meets security requirements for most use cases.
+# To enable: Set enable_iam_database_authentication = true in RDS module
+# Related files: terraform/modules/rds/main.tf:88-139
+AVD-AWS-0176
+
+# ==============================================================================
+# Kubernetes Container UIDs/GIDs
+# ==============================================================================
+
+# AVD-KSV-0020: Container runAsUser uses UID 1000 (recommendation is >1000)
+# AVD-KSV-0021: Container runAsGroup uses GID 1000 (recommendation is >1000)
+# Reason: The MCP server template uses UID/GID 1000, which is a common choice
+# for application containers and avoids the system reserved range (0-999).
+#
+# Security controls in place:
+#   - runAsNonRoot: true enforced (prevents UID 0)
+#   - readOnlyRootFilesystem: true
+#   - All capabilities dropped
+#   - allowPrivilegeEscalation: false
+#   - seccompProfile: RuntimeDefault
+#
+# While >1000 reduces risk of host UID conflicts, 1000 is acceptable for:
+#   - Development and test environments
+#   - Containers with proper isolation (seccomp, capabilities dropped)
+#   - When container images are built for UID 1000
+#
+# For production, consider using UID/GID >1000 (e.g., 1000) if feasible
+# Related files: docs/mcp/examples/mcp-server-template.yaml
+# AVD-KSV-0020
+# AVD-KSV-0021
