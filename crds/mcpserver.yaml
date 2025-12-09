@@ -420,9 +420,6 @@ spec:
                 resources:
                   description: Container resource requirements
                   type: object
-                  required:
-                    - limits
-                    - requests
                   properties:
                     requests:
                       description: Minimum resource requirements
@@ -703,6 +700,15 @@ spec:
                   description: 'Last time the status was updated'
                   type: string
                   format: date-time
+
+                replicas:
+                  description: 'Current number of ready replicas'
+                  type: integer
+                  format: int32
+
+                selector:
+                  description: 'Label selector for pods belonging to this MCPServer'
+                  type: string
 
       # ============================================================================
       # Additional Printer Columns (for kubectl get mcpserver)
