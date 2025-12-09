@@ -1,0 +1,508 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mcpservers.mcp.litellm.ai
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+    description: 'MCPServer CRD for deploying Model Context Protocol servers compliant with https://modelcontextprotocol.io'
+spec:
+  group: mcp.litellm.ai
+  names:
+    kind: MCPServer
+    listKind: MCPServerList
+    plural: mcpservers
+    singular: mcpserver
+    shortNames:
+      - mcp
+      - mcps
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: MCPServer is the Schema for the mcpservers API
+          type: object
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object.'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents.'
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: MCPServerSpec defines the desired state of MCPServer
+              type: object
+              required:
+                - image
+                - transport
+                - type
+              properties:
+                # ============================================================================
+                # Server Type
+                # ============================================================================
+                type:
+                  description: 'Type of MCP server: external-saas, aws-service, or internal-api'
+                  type: string
+                  enum:
+                    - external-saas
+                    - aws-service
+                    - internal-api
+
+                # ============================================================================
+                # MCP Transport Configuration (per MCP Spec)
+                # ============================================================================
+                transport:
+                  description: 'MCP transport configuration (per https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)'
+                  type: object
+                  required:
+                    - type
+                  properties:
+                    type:
+                      description: 'Transport type: http (streamable HTTP with optional SSE)'
+                      type: string
+                      enum:
+                        - http
+                      default: http
+
+                    http:
+                      description: 'HTTP transport configuration'
+                      type: object
+                      properties:
+                        path:
+                          description: 'MCP endpoint path (e.g., /mcp)'
+                          type: string
+                          default: /mcp
+
+                        port:
+                          description: 'HTTP server port'
+                          type: integer
+                          minimum: 1
+                          maximum: 65535
+                          default: 8080
+
+                        sse:
+                          description: 'Enable Server-Sent Events for streaming'
+                          type: boolean
+                          default: true
+
+                        sessionManagement:
+                          description: 'Enable MCP session management with MCP-Session-Id header'
+                          type: boolean
+                          default: true
+
+                        protocolVersion:
+                          description: 'MCP protocol version (MCP-Protocol-Version header)'
+                          type: string
+                          default: "2025-11-25"
+                          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+
+                        originValidation:
+                          description: 'Enable Origin header validation (required for security)'
+                          type: boolean
+                          default: true
+
+                        allowedOrigins:
+                          description: 'Allowed origins for CORS (if originValidation enabled)'
+                          type: array
+                          items:
+                            type: string
+                          default:
+                            - http://litellm-proxy.litellm.svc.cluster.local:4000
+
+                # ============================================================================
+                # Container Image
+                # ============================================================================
+                image:
+                  description: Container image configuration
+                  type: object
+                  required:
+                    - repository
+                    - tag
+                  properties:
+                    repository:
+                      description: 'Container image repository (must be from approved registry)'
+                      type: string
+                      pattern: '^[a-zA-Z0-9][a-zA-Z0-9\-\./:]*[a-zA-Z0-9]$'
+                    tag:
+                      description: 'Image tag (cannot be "latest")'
+                      type: string
+                      pattern: '^(?!latest$)[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$'
+                    pullPolicy:
+                      description: 'Image pull policy'
+                      type: string
+                      enum:
+                        - IfNotPresent
+                        - Always
+                        - Never
+                      default: IfNotPresent
+
+                # ============================================================================
+                # High Availability
+                # ============================================================================
+                replicas:
+                  description: 'Number of pod replicas'
+                  type: integer
+                  minimum: 1
+                  default: 2
+
+                podDisruptionBudget:
+                  description: Pod disruption budget configuration
+                  type: object
+                  properties:
+                    minAvailable:
+                      description: 'Minimum number of available pods'
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    maxUnavailable:
+                      description: 'Maximum number of unavailable pods'
+                      type: integer
+                      minimum: 0
+
+                affinity:
+                  description: Pod anti-affinity configuration
+                  type: object
+                  properties:
+                    podAntiAffinity:
+                      description: 'Pod anti-affinity type'
+                      type: string
+                      enum:
+                        - preferred
+                        - required
+                        - none
+                      default: preferred
+
+                # ============================================================================
+                # Resources
+                # ============================================================================
+                resources:
+                  description: Container resource requirements
+                  type: object
+                  required:
+                    - limits
+                    - requests
+                  properties:
+                    requests:
+                      description: Minimum resource requirements
+                      type: object
+                      required:
+                        - cpu
+                        - memory
+                      properties:
+                        cpu:
+                          description: 'CPU request (e.g., "100m")'
+                          type: string
+                          pattern: '^[0-9]+m?$'
+                        memory:
+                          description: 'Memory request (e.g., "128Mi")'
+                          type: string
+                          pattern: '^[0-9]+(Mi|Gi)$'
+                    limits:
+                      description: Maximum resource limits
+                      type: object
+                      required:
+                        - cpu
+                        - memory
+                      properties:
+                        cpu:
+                          description: 'CPU limit (e.g., "500m")'
+                          type: string
+                          pattern: '^[0-9]+m?$'
+                        memory:
+                          description: 'Memory limit (e.g., "512Mi")'
+                          type: string
+                          pattern: '^[0-9]+(Mi|Gi)$'
+
+                # ============================================================================
+                # Configuration & Secrets
+                # ============================================================================
+                config:
+                  description: 'Non-sensitive configuration (stored in ConfigMap)'
+                  type: object
+                  additionalProperties:
+                    type: string
+
+                secrets:
+                  description: 'Sensitive configuration (synced from AWS Secrets Manager)'
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - awsSecretKey
+                    properties:
+                      name:
+                        description: 'Environment variable name'
+                        type: string
+                        pattern: '^[A-Z][A-Z0-9_]*$'
+                      awsSecretKey:
+                        description: 'AWS Secrets Manager key path'
+                        type: string
+                      optional:
+                        description: 'Whether this secret is optional'
+                        type: boolean
+                        default: false
+
+                # ============================================================================
+                # AWS Integration
+                # ============================================================================
+                aws:
+                  description: AWS-specific configuration
+                  type: object
+                  properties:
+                    iamRole:
+                      description: 'IAM role ARN for IRSA (IAM Roles for Service Accounts)'
+                      type: string
+                      pattern: '^arn:aws:iam::[0-9]{12}:role/[a-zA-Z0-9-_/]+$'
+
+                # ============================================================================
+                # Observability
+                # ============================================================================
+                observability:
+                  description: Observability configuration
+                  type: object
+                  properties:
+                    metrics:
+                      description: Prometheus metrics configuration
+                      type: object
+                      properties:
+                        enabled:
+                          description: 'Enable Prometheus metrics scraping'
+                          type: boolean
+                          default: true
+                        port:
+                          description: 'Metrics port'
+                          type: integer
+                          minimum: 1
+                          maximum: 65535
+                          default: 8080
+                        path:
+                          description: 'Metrics endpoint path'
+                          type: string
+                          default: /metrics
+                        interval:
+                          description: 'Scrape interval (e.g., "30s")'
+                          type: string
+                          pattern: '^[0-9]+(s|m|h)$'
+                          default: 30s
+
+                    tracing:
+                      description: Distributed tracing configuration
+                      type: object
+                      properties:
+                        enabled:
+                          description: 'Enable distributed tracing'
+                          type: boolean
+                          default: true
+                        jaegerEndpoint:
+                          description: 'Jaeger OTLP endpoint'
+                          type: string
+                          default: http://jaeger-all-in-one.monitoring.svc.cluster.local:4318
+                        samplingRate:
+                          description: 'Trace sampling rate (0.0-1.0)'
+                          type: number
+                          minimum: 0.0
+                          maximum: 1.0
+                          default: 1.0
+
+                    healthProbes:
+                      description: Kubernetes health probe configuration
+                      type: object
+                      properties:
+                        liveness:
+                          description: Liveness probe configuration
+                          type: object
+                          properties:
+                            path:
+                              description: 'HTTP path for liveness check'
+                              type: string
+                              default: /health
+                            initialDelaySeconds:
+                              description: 'Initial delay before starting probes'
+                              type: integer
+                              minimum: 0
+                              default: 10
+                            periodSeconds:
+                              description: 'Probe frequency'
+                              type: integer
+                              minimum: 1
+                              default: 10
+                            timeoutSeconds:
+                              description: 'Probe timeout'
+                              type: integer
+                              minimum: 1
+                              default: 5
+                            failureThreshold:
+                              description: 'Consecutive failures to trigger restart'
+                              type: integer
+                              minimum: 1
+                              default: 3
+
+                        readiness:
+                          description: Readiness probe configuration
+                          type: object
+                          properties:
+                            path:
+                              description: 'HTTP path for readiness check'
+                              type: string
+                              default: /ready
+                            initialDelaySeconds:
+                              description: 'Initial delay before starting probes'
+                              type: integer
+                              minimum: 0
+                              default: 5
+                            periodSeconds:
+                              description: 'Probe frequency'
+                              type: integer
+                              minimum: 1
+                              default: 5
+                            timeoutSeconds:
+                              description: 'Probe timeout'
+                              type: integer
+                              minimum: 1
+                              default: 3
+                            failureThreshold:
+                              description: 'Consecutive failures to mark unready'
+                              type: integer
+                              minimum: 1
+                              default: 3
+
+                # ============================================================================
+                # LiteLLM Integration
+                # ============================================================================
+                litellm:
+                  description: LiteLLM proxy integration configuration
+                  type: object
+                  properties:
+                    autoRegister:
+                      description: 'Automatically register with LiteLLM proxy'
+                      type: boolean
+                      default: true
+                    allowedUserGroups:
+                      description: 'User groups allowed to use this MCP server'
+                      type: array
+                      items:
+                        type: string
+
+            # ============================================================================
+            # Status (Operator-managed)
+            # ============================================================================
+            status:
+              description: MCPServerStatus defines the observed state of MCPServer
+              type: object
+              properties:
+                phase:
+                  description: 'Current phase of the MCPServer'
+                  type: string
+                  enum:
+                    - Pending
+                    - Creating
+                    - Ready
+                    - Failed
+                    - Updating
+
+                conditions:
+                  description: 'Status conditions for the MCPServer'
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                    properties:
+                      type:
+                        description: 'Condition type'
+                        type: string
+                        enum:
+                          - DeploymentReady
+                          - ExternalSecretSynced
+                          - ServiceMonitorCreated
+                          - LiteLLMRegistered
+                          - HealthCheckPassing
+                      status:
+                        description: 'Condition status (True/False/Unknown)'
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        description: 'Last time the condition transitioned'
+                        type: string
+                        format: date-time
+                      reason:
+                        description: 'Machine-readable reason for condition'
+                        type: string
+                      message:
+                        description: 'Human-readable message'
+                        type: string
+
+                endpoints:
+                  description: 'Service endpoints for the MCP server'
+                  type: object
+                  properties:
+                    service:
+                      description: 'Internal service endpoint'
+                      type: string
+                    mcp:
+                      description: 'MCP endpoint URL'
+                      type: string
+                    metrics:
+                      description: 'Metrics endpoint'
+                      type: string
+
+                observedGeneration:
+                  description: 'Generation of spec that was last reconciled'
+                  type: integer
+                  format: int64
+
+                lastUpdated:
+                  description: 'Last time the status was updated'
+                  type: string
+                  format: date-time
+
+      # ============================================================================
+      # Additional Printer Columns (for kubectl get mcpserver)
+      # ============================================================================
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          description: MCP server type
+          jsonPath: .spec.type
+        - name: Transport
+          type: string
+          description: MCP transport type
+          jsonPath: .spec.transport.type
+        - name: SSE
+          type: boolean
+          description: SSE enabled
+          jsonPath: .spec.transport.http.sse
+          priority: 1
+        - name: Phase
+          type: string
+          description: Current phase
+          jsonPath: .status.phase
+        - name: Replicas
+          type: integer
+          description: Number of replicas
+          jsonPath: .spec.replicas
+        - name: Age
+          type: date
+          description: Creation timestamp
+          jsonPath: .metadata.creationTimestamp
+
+      # ============================================================================
+      # Subresources
+      # ============================================================================
+      subresources:
+        status: {}
+        scale:
+          specReplicasPath: .spec.replicas
+          statusReplicasPath: .status.replicas
+          labelSelectorPath: .status.selector
