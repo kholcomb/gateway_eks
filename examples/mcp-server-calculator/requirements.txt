@@ -1,0 +1,24 @@
+# ============================================================================
+# MCP Calculator Server - Python Dependencies
+# ============================================================================
+
+# FastMCP framework
+fastmcp>=0.1.0
+
+# HTTP server (used by FastMCP)
+uvicorn>=0.30.0
+
+# HTTP client (for health checks)
+httpx>=0.27.0
+
+# Pydantic (data validation, used by FastMCP)
+pydantic>=2.0.0
+
+# Prometheus metrics
+prometheus-client>=0.20.0
+
+# OpenTelemetry (distributed tracing)
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.46b0
