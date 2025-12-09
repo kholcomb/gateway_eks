@@ -93,9 +93,6 @@ graph TB
 
 ```
 eks-deploy/
-├── eksctl/                          # eksctl configuration (alternative to Terraform)
-│   ├── cluster.yaml                 # EKS cluster definition
-│   └── README.md                    # eksctl deployment guide
 ├── terraform/                       # Terraform infrastructure (full IaC)
 │   ├── main.tf                      # Main Terraform config
 │   ├── modules/                     # Reusable Terraform modules
@@ -146,9 +143,7 @@ eks-deploy/
 2. **AWS CLI v2** installed and configured
 3. **kubectl** installed (v1.28+)
 4. **helm** installed (v3.0+)
-5. **One of the following** for infrastructure deployment:
-   - **Terraform** (v1.5+) for full infrastructure deployment
-   - **eksctl** (latest) for EKS cluster-only deployment
+5. **Terraform** (v1.5+) for infrastructure deployment
 
 ## Quick Start
 
