@@ -518,9 +518,8 @@ kubectl get sa litellm-sa -n litellm -o yaml
 - **[scripts/README.md](scripts/README.md)** - Deployment script usage and options
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Git workflow and contribution guidelines
 
-### Infrastructure Options
-- **[eksctl/README.md](eksctl/README.md)** - eksctl deployment guide (quick setup)
-- **[terraform/README.md](terraform/README.md)** - Terraform deployment guide (production)
+### Infrastructure
+- **[terraform/README.md](terraform/README.md)** - Terraform deployment guide
 
 ### Advanced Features
 - **[ECR_SETUP.md](docs/ECR_SETUP.md)** - Container registry setup and usage
@@ -531,14 +530,7 @@ kubectl get sa litellm-sa -n litellm -o yaml
 
 ## Common Workflows
 
-### Development/Testing Setup
-```bash
-# Use eksctl for faster setup
-./scripts/deploy.sh eksctl
-./scripts/deploy.sh all
-```
-
-### Production Setup
+### Deploy Infrastructure and Applications
 ```bash
 # Use Terraform for complete infrastructure
 ./scripts/deploy.sh terraform
@@ -554,7 +546,7 @@ kubectl get sa litellm-sa -n litellm -o yaml
 
 ### Complete Teardown
 ```bash
-# Destroy everything (auto-detects Terraform or eksctl)
+# Destroy everything
 ./scripts/deploy.sh infrastructure-destroy
 ```
 

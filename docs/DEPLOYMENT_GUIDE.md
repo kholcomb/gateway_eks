@@ -11,7 +11,7 @@ This guide walks you through deploying a production-ready LiteLLM proxy with Ope
 - **Security**: OPA Gatekeeper policies, IRSA, encrypted secrets
 - **MCP Server Support**: Deploy Model Context Protocol servers for extended AI capabilities
 
-> **Note**: This guide focuses on application deployment. For infrastructure setup (EKS cluster, VPC, RDS), see the [main README](../README.md) for choosing between Terraform and eksctl deployment options.
+> **Note**: This guide focuses on application deployment. For infrastructure setup (EKS cluster, VPC, RDS), see the [main README](../README.md) for Terraform deployment instructions.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ graph TB
 
 The following must be deployed before running this deployment:
 
-- **EKS cluster** (via Terraform or eksctl - see [README.md](../README.md))
+- **EKS cluster** (via Terraform - see [README.md](../README.md))
 - **PostgreSQL database** (RDS from Terraform, or external)
 - **VPC with private subnets** (created by infrastructure deployment)
 - **AWS Secrets Manager** enabled in your region
@@ -723,7 +723,7 @@ INTERACTIVE_MODE=false ./deploy.sh all
 ## Additional Resources
 
 ### Documentation
-- [Main README](../README.md) - Infrastructure deployment options (Terraform vs eksctl)
+- [Main README](../README.md) - Infrastructure deployment with Terraform
 - [JWT Authentication Setup Guide](./JWT_AUTHENTICATION_SETUP.md) - Detailed Okta configuration
 - [MCP Deployment Guide](./MCP_DEPLOYMENT.md) - Deploy Model Context Protocol servers
 - [OPA Policies README](../manifests/opa-policies/README.md) - Security policy details
