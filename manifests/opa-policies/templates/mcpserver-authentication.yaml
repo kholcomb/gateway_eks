@@ -1,0 +1,200 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: mcpserverauthentication
+  annotations:
+    description: >-
+      Enforces zero-trust authentication requirements for MCPServer resources.
+      Validates inbound/outbound auth configuration and user context based on
+      data classification and capabilities.
+spec:
+  crd:
+    spec:
+      names:
+        kind: MCPServerAuthentication
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            enforcementLevel:
+              description: Enforcement level for authentication policies
+              type: string
+              enum: ["strict", "standard", "permissive"]
+              default: "standard"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package mcpserverauthentication
+
+        # =================================================================
+        # Inbound Authentication Requirements (Zero Trust)
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          not input.review.object.spec.authentication.inbound
+          msg := "Zero trust violation: spec.authentication.inbound is required"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.authentication.inbound
+          not input.review.object.spec.authentication.inbound.type
+          msg := "Zero trust violation: spec.authentication.inbound.type is required"
+        }
+
+        # =================================================================
+        # Bearer Token Validation
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.authentication.inbound.type == "bearer-token"
+          not input.review.object.spec.authentication.inbound.tokenSecretRef
+          msg := "bearer-token authentication requires tokenSecretRef"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.authentication.inbound.type == "bearer-token"
+          not input.review.object.spec.authentication.inbound.tokenSecretRef.name
+          msg := "bearer-token authentication requires tokenSecretRef.name"
+        }
+
+        # =================================================================
+        # Service Account Validation
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.authentication.inbound.type == "service-account"
+          not input.review.object.spec.authentication.inbound.allowedServiceAccounts
+          msg := "service-account authentication requires allowedServiceAccounts list"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.authentication.inbound.type == "service-account"
+          count(input.review.object.spec.authentication.inbound.allowedServiceAccounts) == 0
+          msg := "service-account authentication requires at least one allowedServiceAccount"
+        }
+
+        # =================================================================
+        # Trust Boundary + Authentication Rules
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.trustBoundary == "isolated"
+          input.review.object.spec.authentication.inbound.type != "service-account"
+          msg := "Isolated trust boundary requires service-account authentication"
+        }
+
+        # =================================================================
+        # Data Classification + User Context Rules
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.dataClassification == "restricted"
+          not input.review.object.spec.authentication.userContext.required
+          msg := "Restricted data classification requires userContext.required=true"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.dataClassification == "restricted"
+          input.review.object.spec.authentication.userContext.required != true
+          msg := "Restricted data classification requires userContext.required=true"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.dataClassification == "restricted"
+          not input.review.object.spec.authentication.userContext.auditLogging
+          msg := "Restricted data classification requires userContext.auditLogging=true"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.dataClassification == "restricted"
+          input.review.object.spec.authentication.userContext.auditLogging != true
+          msg := "Restricted data classification requires userContext.auditLogging=true"
+        }
+
+        # =================================================================
+        # Capability-based Authentication Requirements
+        # =================================================================
+
+        sensitive_capabilities := {
+          "database-write",
+          "file-storage-write",
+          "credential-access",
+          "secret-management",
+          "payment-processing",
+          "code-execution"
+        }
+
+        violation[{"msg": msg}] {
+          capability := input.review.object.spec.classification.capabilities[_]
+          sensitive_capabilities[capability]
+          not input.review.object.spec.authentication.userContext.auditLogging
+          msg := sprintf("Capability '%s' requires userContext.auditLogging=true for audit trail", [capability])
+        }
+
+        violation[{"msg": msg}] {
+          capability := input.review.object.spec.classification.capabilities[_]
+          sensitive_capabilities[capability]
+          input.review.object.spec.authentication.userContext.auditLogging != true
+          msg := sprintf("Capability '%s' requires userContext.auditLogging=true for audit trail", [capability])
+        }
+
+        # credential-access MUST have user context required
+        violation[{"msg": msg}] {
+          has_capability("credential-access")
+          not input.review.object.spec.authentication.userContext.required
+          msg := "Capability 'credential-access' requires userContext.required=true"
+        }
+
+        violation[{"msg": msg}] {
+          has_capability("credential-access")
+          input.review.object.spec.authentication.userContext.required != true
+          msg := "Capability 'credential-access' requires userContext.required=true"
+        }
+
+        # =================================================================
+        # Critical Security Violations
+        # =================================================================
+
+        # CRITICAL: Internet-facing + credential-access = DENY
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.trustBoundary == "internet-facing"
+          has_capability("credential-access")
+          msg := "CRITICAL SECURITY VIOLATION: internet-facing servers cannot have credential-access capability"
+        }
+
+        # CRITICAL: Internet-facing + secret-management = DENY
+        violation[{"msg": msg}] {
+          input.review.object.spec.classification.trustBoundary == "internet-facing"
+          has_capability("secret-management")
+          msg := "CRITICAL SECURITY VIOLATION: internet-facing servers cannot have secret-management capability"
+        }
+
+        # =================================================================
+        # Outbound Authentication Validation
+        # =================================================================
+
+        violation[{"msg": msg}] {
+          outbound := input.review.object.spec.authentication.outbound[_]
+          requires_secret(outbound.method)
+          not outbound.secretRef
+          msg := sprintf("Outbound auth to '%s' with method '%s' requires secretRef", [outbound.service, outbound.method])
+        }
+
+        violation[{"msg": msg}] {
+          outbound := input.review.object.spec.authentication.outbound[_]
+          requires_secret(outbound.method)
+          not outbound.secretRef.name
+          msg := sprintf("Outbound auth to '%s' with method '%s' requires secretRef.name", [outbound.service, outbound.method])
+        }
+
+        # =================================================================
+        # Helper Functions
+        # =================================================================
+
+        has_capability(cap) {
+          input.review.object.spec.classification.capabilities[_] == cap
+        }
+
+        requires_secret("api-key")
+        requires_secret("oauth2")
+        requires_secret("basic-auth")
