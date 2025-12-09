@@ -674,6 +674,7 @@ spec:
                           - ServiceMonitorCreated
                           - LiteLLMRegistered
                           - HealthCheckPassing
+                          - RBACConfigured
                       status:
                         description: 'Condition status (True/False/Unknown)'
                         type: string
