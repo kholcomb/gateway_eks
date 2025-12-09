@@ -147,45 +147,7 @@ eks-deploy/
 
 ## Quick Start
 
-### Option 1: Interactive Deployment (Recommended)
-
-The deployment script will guide you through choosing between Terraform and eksctl:
-
-```bash
-cd scripts
-./deploy.sh infrastructure
-```
-
-You'll be prompted to choose:
-- **[T] Terraform** - Full infrastructure (VPC, EKS, RDS, Secrets Manager)
-- **[E] eksctl** - Faster cluster-only deployment (VPC, EKS, node groups)
-
-### Option 2: Deploy with eksctl (Faster)
-
-```bash
-# 1. Set environment variables
-export AWS_REGION=us-east-1
-export EKS_CLUSTER_NAME=litellm-eks
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# 2. Deploy EKS cluster using eksctl
-cd scripts
-./deploy.sh eksctl
-
-# 3. Create database secret (eksctl doesn't create RDS)
-aws secretsmanager create-secret \
-  --name litellm/database-url \
-  --secret-string 'postgresql://user:password@your-db-host:5432/litellm' \
-  --region $AWS_REGION
-
-# 4. Deploy applications
-./deploy.sh all
-```
-
-**Time:** ~20 minutes total
-**Best for:** Development, testing, quick setup
-
-### Option 3: Deploy with Terraform (Full Infrastructure)
+### Deploy Full Infrastructure
 
 ```bash
 # 1. Set environment variables
