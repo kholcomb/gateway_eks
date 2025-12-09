@@ -44,7 +44,101 @@
       ]
     },
     {
-      "description": "Docker image updates - critical security",
+      "description": "Redis Docker image updates",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "redis"
+      ],
+      "groupName": "Redis Docker image",
+      "labels": [
+        "dependencies",
+        "docker",
+        "redis"
+      ],
+      "automerge": false,
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "Redis exporter Docker image updates",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "quay.io/oliver006/redis_exporter"
+      ],
+      "groupName": "Redis Exporter Docker image",
+      "labels": [
+        "dependencies",
+        "docker",
+        "redis-exporter"
+      ],
+      "automerge": false,
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "Jaeger Docker image updates",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "jaegertracing/all-in-one"
+      ],
+      "groupName": "Jaeger Docker image",
+      "labels": [
+        "dependencies",
+        "docker",
+        "jaeger"
+      ],
+      "automerge": false,
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "External Secrets Docker image updates",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/external-secrets/external-secrets"
+      ],
+      "groupName": "External Secrets Docker image",
+      "labels": [
+        "dependencies",
+        "docker"
+      ],
+      "automerge": false,
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "OpenWebUI Docker image updates",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/open-webui/open-webui"
+      ],
+      "groupName": "OpenWebUI Docker image",
+      "labels": [
+        "dependencies",
+        "docker",
+        "openwebui"
+      ],
+      "automerge": false,
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "Other Docker image updates",
       "matchDatasources": [
         "docker"
       ],
@@ -58,7 +152,7 @@
         "docker"
       ],
       "automerge": false,
-      "groupName": "Docker images",
+      "separateMinorPatch": true,
       "schedule": [
         "before 6am on monday"
       ]
@@ -166,36 +260,19 @@
   "dependencyDashboardTitle": "Dependency Dashboard",
   "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates.",
   "timezone": "America/New_York",
+  "helm-values": {
+    "fileMatch": [
+      "^helm-values/.*\\.ya?ml$"
+    ]
+  },
   "regexManagers": [
     {
-      "description": "Update Docker image tags in Helm files",
+      "description": "Update Docker images without repository/tag structure (image: repo, tag: version format)",
       "fileMatch": [
         "^helm-values/.*\\.yaml$"
       ],
       "matchStrings": [
-        "repository:\\s*(?<depName>[^\\s]+)\\s+.*?tag:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
-      ],
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "docker"
-    },
-    {
-      "description": "Update Docker image tags in Helm files",
-      "fileMatch": [
-        "^helm-values/.*\\.yaml$"
-      ],
-      "matchStrings": [
-        "image:\\s*(?<depName>[^\\s:]+)\\s+.*?tag:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
-      ],
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "docker"
-    },
-    {
-      "description": "Update Docker images with inline tags (image:tag format)",
-      "fileMatch": [
-        "^helm-values/.*\\.yaml$"
-      ],
-      "matchStrings": [
-        "image:\\s*(?<depName>[^:]+):(?<currentValue>[^\\s]+)"
+        "image:\\s*(?<depName>[^\\s\\n]+)[\\s\\n]+tag:\\s*[\"']?(?<currentValue>[^\"'\\s\\n]+)[\"']?"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
