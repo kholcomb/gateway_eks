@@ -257,16 +257,16 @@
   "dependencyDashboardHeader": "This dashboard tracks all pending dependency updates.",
   "timezone": "America/New_York",
   "helm-values": {
-    "fileMatch": [
-      "^helm-values/.*\\.ya?ml$"
+    "managerFilePatterns": [
+      "/^helm-values/.*\\.ya?ml$/"
     ]
   },
   "customManagers": [
     {
       "customType": "regex",
       "description": "Update Docker images without repository/tag structure (image: repo, tag: version format)",
-      "fileMatch": [
-        "^helm-values/.*\\.yaml$"
+      "managerFilePatterns": [
+        "/^helm-values/.*\\.yaml$/"
       ],
       "matchStrings": [
         "image:\\s*(?<depName>[^\\s\\n]+)[\\s\\n]+tag:\\s*[\"']?(?<currentValue>[^\"'\\s\\n]+)[\"']?"
