@@ -6,7 +6,7 @@ replicaCount: 2
 image:
   repository: ghcr.io/berriai/litellm
   pullPolicy: IfNotPresent
-  tag: "v1.80.8-stable@sha256:9005bc060d495917bc901b2d34a720a58035f284ef7a375d561dffab6f5e59f5"  # Pin to specific version for stability
+  tag: "v1.81.3-stable@sha256:3d80908e35230a0dfb58051ae4e2847371b2a327b44e105e79b8c4f67a65596c"  # Pin to specific version for stability
 
 # Service Account with IRSA for Bedrock access
 serviceAccount:
