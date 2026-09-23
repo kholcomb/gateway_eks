@@ -66,7 +66,7 @@ haproxy:
 # Prometheus metrics (using official quay.io image)
 exporter:
   enabled: true
-  image: quay.io/oliver006/redis_exporter@sha256:6a97d4dd743b533e1f950c677b87d880e44df363c61af3f406fc9e53ed65ee03
+  image: quay.io/oliver006/redis_exporter@sha256:ca3abd5f19da6c87e96038ba08aaa3dfaab34dc649834584c4d6880b05952fef
   tag: v1.80.1
   port: 9121
   serviceMonitor:
