@@ -5,7 +5,7 @@
 # Pin image version for stability
 image:
   repository: redis
-  tag: "8.6.2-alpine@sha256:885cba5f568cc9b05cbeb1fd7d41b860da06983c24bbb0d7027332a2e82def87"
+  tag: "8.10.3-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80"
 
 # Number of redis master/slave pods (PoC: single instance)
 replicas: 1
